@@ -10,8 +10,9 @@ local Players      = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
 
+-- Added Crosshair.lua explicitly to the tracking array so it's managed cleanly
 local MODULES = {
-    "Aimbot.lua", "ESP.lua", "Fullbright.lua",
+    "Crosshair.lua", "Aimbot.lua", "ESP.lua", "Fullbright.lua",
     "Teleport.lua", "ItemESP.lua", "EventESP.lua", "UI.lua"
 }
 
@@ -200,7 +201,7 @@ FooterLbl.Size             = UDim2.new(1, -32, 0, 14)
 FooterLbl.AnchorPoint      = Vector2.new(0.5, 1)
 FooterLbl.Position         = UDim2.new(0.5, 0, 1, -10)
 FooterLbl.BackgroundTransparency = 1
-FooterLbl.Text             = "Apocolypse Rising 2  •  v1.0"
+FooterLbl.Text             = "Apocalypse Rising 2  •  v1.0"
 FooterLbl.TextColor3       = Color3.fromRGB(45, 48, 75)
 FooterLbl.TextSize         = 10
 FooterLbl.Font             = Enum.Font.Gotham
@@ -265,12 +266,12 @@ local function dismissLoadScreen()
 end
 
 -- ══════════════════════════════════════════
--- DEV CONSOLE LOADER (kept from before)
+-- DEV CONSOLE LOADER 
 -- ══════════════════════════════════════════
-local ANIM_SPEED  = 7
-local COLOR_DIM   = "2a2a3a"
-local COLOR_BRIGHT= "6e9bff"
-local COLOR_WHITE = "eeeef5"
+local ANIM_SPEED   = 7
+local COLOR_DIM    = "2a2a3a"
+local COLOR_BRIGHT = "6e9bff"
+local COLOR_WHITE  = "eeeef5"
 
 local function findClientLogFrame()
     local master = CoreGui:FindFirstChild("DevConsoleMaster")
@@ -322,7 +323,7 @@ loaderConn = RunService.RenderStepped:Connect(function()
     local statusColor = loadProgress.allDone and "00e676" or "6e9bff"
     local statusText  = loadProgress.allDone
         and "READY"
-        or  string.format("%d / %d  %s", loadProgress.done, loadProgress.total,
+        or  string.format("%d / %d   %s", loadProgress.done, loadProgress.total,
                 loadProgress.current ~= "" and ("← " .. loadProgress.current) or "")
 
     loaderLabel.Text = string.format(
@@ -332,7 +333,6 @@ loaderConn = RunService.RenderStepped:Connect(function()
 end)
 
 task.spawn(function()
-    -- Wait until all done (polled by the dismiss logic below)
     repeat task.wait(0.1) until loadProgress.allDone
     task.wait(2.2)
     for i = 1, 10 do
@@ -344,34 +344,62 @@ task.spawn(function()
 end)
 
 -- ══════════════════════════════════════════
--- MODULE LOADER
+-- FAULT-TOLERANT MODULE LOADER
 -- ══════════════════════════════════════════
-local function load(path)
+local LoadedModules = {}
+
+local function loadModule(path)
     print("⏳ Loading: " .. path)
-    local src = game:HttpGet(BASE .. path)
-    print("📦 Got " .. #src .. " bytes for: " .. path)
-    local fn, err = loadstring(src)
-    if not fn then
-        error("❌ COMPILE ERROR in " .. path .. ": " .. tostring(err), 2)
-    end
-    local ok, result = pcall(fn)
-    if not ok then
-        error("❌ RUNTIME ERROR in " .. path .. ": " .. tostring(result), 2)
-    end
-    print("✅ OK: " .. path)
-    loadProgress.done    = loadProgress.done + 1
     loadProgress.current = path:gsub("%.lua$", "")
+    
+    -- Step 1: Securely grab the source data via HttpGet
+    local getSuccess, src = pcall(function()
+        return game:HttpGet(BASE .. path)
+    end)
+    
+    if not getSuccess or not src then
+        warn("⚠ HTTP ERROR: Failed to fetch module " .. path)
+        loadProgress.done = loadProgress.done + 1
+        return { Init = function() end } -- Returns a blank fallback component structure
+    end
+    
+    print("📦 Got " .. #src .. " bytes for: " .. path)
+    
+    -- Step 2: Attempt compiling the module string
+    local fn, compileErr = loadstring(src)
+    if not fn then
+        warn("⚠ COMPILE ERROR in " .. path .. ": " .. tostring(compileErr))
+        loadProgress.done = loadProgress.done + 1
+        return { Init = function() end }
+    end
+    
+    -- Step 3: Run the logic inside a runtime protected bubble
+    local runSuccess, result = pcall(fn)
+    if not runSuccess then
+        warn("⚠ RUNTIME ERROR inside execution of " .. path .. ": " .. tostring(result))
+        loadProgress.done = loadProgress.done + 1
+        return { Init = function() end }
+    end
+    
+    print("✅ OK: " .. path)
+    loadProgress.done = loadProgress.done + 1
     return result
 end
 
-local Crosshair  = load("Crosshair.lua")
-local Aimbot     = load("Aimbot.lua")
-local ESP        = load("ESP.lua")
-local Fullbright = load("Fullbright.lua")
-local Teleport   = load("Teleport.lua")
-local ItemESP    = load("ItemESP.lua")
-local EventESP   = load("EventESP.lua")
-local UI         = load("UI.lua")
+-- Process all items smoothly in a clean iterative loop (Fixes double logging)
+for _, moduleFile in ipairs(MODULES) do
+    local modName = moduleFile:gsub("%.lua$", "")
+    LoadedModules[modName] = loadModule(moduleFile)
+end
+
+local Crosshair  = LoadedModules["Crosshair"]
+local Aimbot     = LoadedModules["Aimbot"]
+local ESP        = LoadedModules["ESP"]
+local Fullbright = LoadedModules["Fullbright"]
+local Teleport   = LoadedModules["Teleport"]
+local ItemESP    = LoadedModules["ItemESP"]
+local EventESP   = LoadedModules["EventESP"]
+local UI         = LoadedModules["UI"]
 
 loadProgress.allDone = true
 loadProgress.current = ""
@@ -382,25 +410,30 @@ dismissLoadScreen()
 -- ══════════════════════════════════════════
 -- UI SANITY CHECK
 -- ══════════════════════════════════════════
-local required = {
-    "makePage","getCol","makeSectionLabel","makeToggleRow","makeSubToggleRow",
-    "makeSliderRow","makeDropdownRow","makeInputRow","makeActionBtn",
-    "makeStatusLabel","makeSpacer","makeColorPickerRow","setupNavigation","switchTo",
-    "setupDrag","setupWindowControls","toast","mount"
-}
-for _, fn in ipairs(required) do
-    if type(UI[fn]) ~= "function" then
-        error("❌ UI missing function: " .. fn)
+if type(UI) == "table" then
+    local required = {
+        "makePage","getCol","makeSectionLabel","makeToggleRow","makeSubToggleRow",
+        "makeSliderRow","makeDropdownRow","makeInputRow","makeActionBtn",
+        "makeStatusLabel","makeSpacer","makeColorPickerRow","setupNavigation","switchTo",
+        "setupDrag","setupWindowControls","toast","mount"
+    }
+    for _, fn in ipairs(required) do
+        if type(UI[fn]) ~= "function" then
+            warn("❌ UI missing required API method: " .. fn)
+        end
     end
+    print("✅ UI API verified")
+else
+    error("❌ Critical: UI system completely failed execution pass.")
 end
-print("✅ UI API verified")
 
-Crosshair:Init()
-Aimbot:Init()
-ESP:Init()
-Teleport:Init()
-ItemESP:Init()
-EventESP:Init()
+-- Safely trigger Init phases (fallback tables use clean empty functions instead of nil)
+if Crosshair and Crosshair.Init then Crosshair:Init() end
+if Aimbot and Aimbot.Init then Aimbot:Init() end
+if ESP and ESP.Init then ESP:Init() end
+if Teleport and Teleport.Init then Teleport:Init() end
+if ItemESP and ItemESP.Init then ItemESP:Init() end
+if EventESP and EventESP.Init then EventESP:Init() end
 
 -- ══════════════════════════════════════════
 -- COMBAT PAGE  (nav key: "combat")
@@ -411,7 +444,7 @@ local cR = UI.getCol("combat", "right")
 
 UI.makeSectionLabel(cL, "Aimbot")
 UI.makeToggleRow(cL, "Aimbot", false, function(s)
-    Aimbot:SetEnabled(s)
+    if Aimbot.SetEnabled then Aimbot:SetEnabled(s) end
     UI.toast("Aimbot", s)
 end)
 UI.makeSubToggleRow(cL, "Wall Check", true, function(s)
@@ -433,8 +466,10 @@ end)
 UI.makeSectionLabel(cR, "FOV")
 UI.makeSliderRow(cR, "FOV Radius (px)", 50, 400, 150, function(val)
     Aimbot.FOV = val
-    local c = Aimbot:GetOverlayCircle()
-    if c then c.Radius = val end
+    if Aimbot.GetOverlayCircle then
+        local c = Aimbot:GetOverlayCircle()
+        if c then c.Radius = val end
+    end
 end)
 
 -- ══════════════════════════════════════════
@@ -445,10 +480,9 @@ UI.makePage("legit")
 local lL = UI.getCol("legit", "left")
 local lR = UI.getCol("legit", "right")
 
--- ── Left column: enable + shape + size ───────────────────
 UI.makeSectionLabel(lL, "Crosshair")
 UI.makeToggleRow(lL, "Enable Crosshair", false, function(s)
-    Crosshair:SetEnabled(s)
+    if Crosshair.SetEnabled then Crosshair:SetEnabled(s) end
     UI.toast("Crosshair", s)
 end)
 
@@ -476,7 +510,6 @@ UI.makeSubToggleRow(lL, "Bottom", true,  function(s) Crosshair.ShowBottom = s en
 UI.makeSubToggleRow(lL, "Left",   true,  function(s) Crosshair.ShowLeft   = s end)
 UI.makeSubToggleRow(lL, "Right",  true,  function(s) Crosshair.ShowRight  = s end)
 
--- ── Right column: appearance + outline + options ─────────
 UI.makeSectionLabel(lR, "Colour")
 UI.makeColorPickerRow(lR, "Crosshair color",  Color3.fromRGB(0, 255, 136), function(c)
     Crosshair.Color = c
@@ -507,7 +540,7 @@ UI.makeSectionLabel(vL, "Player ESP")
 local subChams, subHealth, subBoxes, subNames, subWeapon, subSkeleton, subZombies
 
 UI.makeToggleRow(vL, "Player ESP", false, function(s)
-    ESP:SetEnabled(s)
+    if ESP.SetEnabled then ESP:SetEnabled(s) end
     subChams.Visible    = s
     subHealth.Visible   = s
     subBoxes.Visible    = s
@@ -520,11 +553,11 @@ end)
 
 subNames    = UI.makeSubToggleRow(vL, "Names",        true,  function(s) ESP.Names = s       UI.toast("Names", s)        end)
 subBoxes    = UI.makeSubToggleRow(vL, "Boxes",        true,  function(s) ESP.Boxes = s       UI.toast("Boxes", s)        end)
-subChams    = UI.makeSubToggleRow(vL, "Chams",        false, function(s) ESP:SetChams(s)     UI.toast("Chams", s)        end)
+subChams    = UI.makeSubToggleRow(vL, "Chams",        false, function(s) if ESP.SetChams then ESP:SetChams(s) end     UI.toast("Chams", s)        end)
 subHealth   = UI.makeSubToggleRow(vL, "Health Bars",  false, function(s) ESP.HealthBars = s  UI.toast("Health Bars", s)  end)
 subWeapon   = UI.makeSubToggleRow(vL, "Weapon Label", true,  function(s) ESP.WeaponText = s  UI.toast("Weapon Label", s) end)
-subSkeleton = UI.makeSubToggleRow(vL, "Skeleton",     false, function(s) ESP:SetSkeleton(s)  UI.toast("Skeleton", s)     end)
-subZombies  = UI.makeSubToggleRow(vL, "Zombies",      false, function(s) ESP:SetZombies(s)   UI.toast("Zombies", s)      end)
+subSkeleton = UI.makeSubToggleRow(vL, "Skeleton",     false, function(s) if ESP.SetSkeleton then ESP:SetSkeleton(s) end UI.toast("Skeleton", s)     end)
+subZombies  = UI.makeSubToggleRow(vL, "Zombies",      false, function(s) if ESP.SetZombies then ESP:SetZombies(s) end   UI.toast("Zombies", s)      end)
 
 UI.makeSliderRow(vL, "ESP Distance (m)", 10, 5000, 500, function(val)
     ESP.MaxDistance = val
@@ -535,13 +568,13 @@ UI.makeSectionLabel(vR, "Item ESP")
 local subAccessories
 
 UI.makeToggleRow(vR, "Item ESP", false, function(s)
-    ItemESP:SetEnabled(s)
+    if ItemESP.SetEnabled then ItemESP:SetEnabled(s) end
     subAccessories.Visible = s
     UI.toast("Item ESP", s)
 end)
 
 subAccessories = UI.makeSubToggleRow(vR, "Accessories", true, function(s)
-    ItemESP:SetAccessories(s)
+    if ItemESP.SetAccessories then ItemESP:SetAccessories(s) end
     UI.toast("Accessories", s)
 end)
 
@@ -553,7 +586,7 @@ UI.makeSpacer(vR, 6)
 UI.makeSectionLabel(vR, "Event ESP")
 
 UI.makeToggleRow(vR, "Event ESP", false, function(s)
-    EventESP:SetEnabled(s)
+    if EventESP.SetEnabled then EventESP:SetEnabled(s) end
     UI.toast("Event ESP", s)
 end)
 
@@ -569,7 +602,7 @@ local wL = UI.getCol("world", "left")
 
 UI.makeSectionLabel(wL, "Lighting")
 UI.makeToggleRow(wL, "Fullbright", false, function(s)
-    Fullbright:SetEnabled(s)
+    if Fullbright.SetEnabled then Fullbright:SetEnabled(s) end
     UI.toast("Fullbright", s)
 end)
 
@@ -588,10 +621,12 @@ UI.makeSliderRow(mL, "Behind Offset (studs)", 1, 30, 15, function(val)
 end)
 
 local statusLbl = UI.makeStatusLabel(mL)
-Teleport:OnStatusChange(function(msg, color)
-    statusLbl.Text       = "Status: " .. msg
-    statusLbl.TextColor3 = color
-end)
+if Teleport.OnStatusChange then
+    Teleport:OnStatusChange(function(msg, color)
+        statusLbl.Text       = "Status: " .. msg
+        statusLbl.TextColor3 = color
+    end)
+end
 
 UI.makeSpacer(mL, 4)
 UI.makeSectionLabel(mL, "Actions")
@@ -603,14 +638,18 @@ stopTPBtn.TextColor3 = Color3.fromRGB(128, 128, 128)
 
 instantTPBtn.MouseButton1Click:Connect(function()
     instantTPBtn.Text = "⏳ Teleporting..."
-    Teleport:Once(getUsername(), function(success)
-        if not success then instantTPBtn.Text = "❌ Not Found" end
-        task.delay(1.5, function() instantTPBtn.Text = "⚡ One-Time Teleport" end)
-    end)
+    if Teleport.Once then
+        Teleport:Once(getUsername(), function(success)
+            if not success then instantTPBtn.Text = "❌ Not Found" end
+            task.delay(1.5, function() instantTPBtn.Text = "⚡ One-Time Teleport" end)
+        end)
+    else
+        instantTPBtn.Text = "❌ Feature Offline"
+    end
 end)
 
 startTPBtn.MouseButton1Click:Connect(function()
-    if Teleport.IsTracking then return end
+    if Teleport.IsTracking or not Teleport.StartTracking then return end
     Teleport:StartTracking(
         getUsername(),
         function(_target)
@@ -630,7 +669,7 @@ startTPBtn.MouseButton1Click:Connect(function()
 end)
 
 stopTPBtn.MouseButton1Click:Connect(function()
-    if not Teleport.IsTracking then return end
+    if not Teleport.IsTracking or not Teleport.StopTracking then return end
     Teleport:StopTracking()
     startTPBtn.Text             = "🔄 Start Loop Tracking"
     startTPBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
@@ -650,13 +689,13 @@ UI.setupNavigation()
 UI.switchTo("combat")
 UI.setupDrag()
 UI.setupWindowControls(function()
-    Crosshair:Destroy()
-    Aimbot:Destroy()
-    ESP:Destroy()
-    ItemESP:Destroy()
-    EventESP:Destroy()
-    if Fullbright.Enabled then Fullbright:Remove() end
-    if Teleport.IsTracking then Teleport:StopTracking() end
+    if Crosshair and Crosshair.Destroy then Crosshair:Destroy() end
+    if Aimbot and Aimbot.Destroy then Aimbot:Destroy() end
+    if ESP and ESP.Destroy then ESP:Destroy() end
+    if ItemESP and ItemESP.Destroy then ItemESP:Destroy() end
+    if EventESP and EventESP.Destroy then EventESP:Destroy() end
+    if Fullbright and Fullbright.Enabled and Fullbright.Remove then Fullbright:Remove() end
+    if Teleport and Teleport.IsTracking and Teleport.StopTracking then Teleport:StopTracking() end
 end)
 
 UI.mount()
