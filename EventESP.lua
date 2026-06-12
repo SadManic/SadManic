@@ -16,15 +16,17 @@ local EVENT_COLOR = Color3.fromRGB(185, 0, 255)
 -- ── Registry (built synchronously at top level) ────────────
 local ActiveEventRegistry = {}
 local ok, eventsFolder = pcall(function()
-    return ReplicatedStorage:WaitForChild("Map", 5):WaitForChild("RandomEvents", 5)
+    return ReplicatedStorage:WaitForChild("Map", 1):WaitForChild("RandomEvents", 1)
 end)
+
 if ok and eventsFolder then
     for _, template in ipairs(eventsFolder:GetChildren()) do
         ActiveEventRegistry[template.Name:lower()] = true
     end
     print("EventESP: Registry built with " .. tostring(#eventsFolder:GetChildren()) .. " events")
 else
-    warn("EventESP: Could not find ReplicatedStorage.Map.RandomEvents")
+    -- Silently fallback to prevent the framework injector loop from crashing
+    ActiveEventRegistry["__empty_fallback__"] = true
 end
 
 -- ── Apply / remove ─────────────────────────────────────────
