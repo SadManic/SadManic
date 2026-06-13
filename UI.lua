@@ -8,8 +8,7 @@ local Players           = game:GetService("Players")
 local TextService       = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
-
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui", 30)
 local UI = {}
 
 -- ══════════════════════════════════════════
