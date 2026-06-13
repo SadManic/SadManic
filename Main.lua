@@ -8,7 +8,7 @@ local CoreGui      = game:GetService("CoreGui")
 local Players      = game:GetService("Players")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui", 30)
 
 -- Added Crosshair.lua explicitly to the tracking array so it's managed cleanly
 local MODULES = {
