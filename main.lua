@@ -192,10 +192,9 @@ local function renderFrame()
                         d.Text.Visible = false
                     end
 
-                    -- Bounding Box Framework (Isolated from physical animation/state jitters)
+                    -- Bounding Box Framework
                     local rootSc, rootOn = camera:WorldToViewportPoint(root.Position)
                     if rootOn and d.Box then
-                        -- Calculate standard bounding dimensions directly from the root coordinate plane
                         local topSc = camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
                         local bottomSc = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0))
                         
@@ -491,6 +490,7 @@ function Teleport:StartTracking(targetName, onSuccess, onFail)
 end
 
 function Teleport:StopTracking()
+    if not self.IsTracking then return end
     self.IsTracking     = false
     self._currentTarget = nil
     if trackingConnection then
@@ -519,21 +519,121 @@ function Teleport:StopTracking()
 end
 
 function Teleport:Init()
+    print("[ChrisM] Teleport:Init()")
     Players.PlayerRemoving:Connect(function(p)
         if self.IsTracking and self._currentTarget == p then
             setStatus("Target left.", Color3.fromRGB(255, 80, 80))
             self:StopTracking()
         end
     end)
-    print("[ChrisM] Teleport:Init()")
 end
 
 -- =============================================================================
--- 4. BOOTSTRAP
+-- 4. GHOST HITBOX SYSTEM (ANTI-CHEAT COMPLIANT ENGINE)
+-- =============================================================================
+local HitboxModule = {
+    Active = false,
+    HeadScale = 10,
+    HitboxSize = 10,
+}
+
+local hitboxConnection = nil
+local gameMetatable = nil
+local oldIndex = nil
+local oldNewIndex = nil
+
+local function applyHitboxExpansion(character)
+    -- A. Anti-Freeze Dynamic Mesh Scaling
+    local head = character:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        local mesh = head:FindFirstChildOfClass("SpecialMesh")
+        if mesh then
+            mesh.Scale = Vector3.new(HitboxModule.HeadScale, HitboxModule.HeadScale, HitboxModule.HeadScale)
+        else
+            head.Size = Vector3.new(HitboxModule.HeadScale, HitboxModule.HeadScale, HitboxModule.HeadScale)
+        end
+        
+        local neck = head:FindFirstChild("NeckAttachment") or head:FindFirstChild("FaceCenterAttachment")
+        if neck and neck:IsA("Attachment") then
+            neck.Position = Vector3.new(0, -HitboxModule.HeadScale / 4, 0)
+        end
+        head.CanCollide = false
+    end
+
+    -- B. Stealth Physical Expansion Engine (Hook Bypassed)
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if rootPart and rootPart:IsA("BasePart") then
+        if oldNewIndex then
+            oldNewIndex(rootPart, "Size", Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize))
+            oldNewIndex(rootPart, "Transparency", 1) -- Fully hidden from raw capture pipelines
+            oldNewIndex(rootPart, "CanCollide", false)
+        end
+    end
+end
+
+local function initHitboxMetatables()
+    if oldIndex and oldNewIndex then return end 
+
+    gameMetatable = getrawmetatable(game)
+    oldIndex = gameMetatable.__index
+    oldNewIndex = gameMetatable.__newindex
+    setreadonly(gameMetatable, false)
+
+    -- Force virtual default parameters during scan calls
+    gameMetatable.__index = newcclosure(function(self, key)
+        if HitboxModule.Active and typeof(self) == "Instance" and self:IsA("Part") and self.Name == "HumanoidRootPart" then
+            if key == "Size" then return Vector3.new(2, 2, 1)
+            elseif key == "Transparency" then return 1 end
+        end
+        return oldIndex(self, key)
+    end)
+
+    gameMetatable.__newindex = newcclosure(function(self, key, value)
+        if HitboxModule.Active and typeof(self) == "Instance" and self:IsA("Part") and self.Name == "HumanoidRootPart" then
+            if key == "Size" or key == "Transparency" or key == "CFrame" then return end
+        end
+        return oldNewIndex(self, key, value)
+    end)
+    
+    setreadonly(gameMetatable, true)
+end
+
+function HitboxModule:Toggle(state)
+    self.Active = state
+    if not state then
+        if hitboxConnection then
+            hitboxConnection:Disconnect()
+            hitboxConnection = nil
+        end
+        print("[ChrisM] Hitbox engine offline.")
+        return
+    end
+
+    assert(hookmetamethod, "CRITICAL: Current execution platform missing hookmetamethod hooks.")
+    initHitboxMetatables()
+
+    hitboxConnection = RunService.Heartbeat:Connect(function()
+        if not self.Active then return end
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer then
+                local character = CharactersFolder and CharactersFolder:FindFirstChild(player.Name) or player.Character
+                if character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
+                    pcall(applyHitboxExpansion, character)
+                end
+            end
+        end
+    end)
+    print("[ChrisM] Ghost Hitbox engine initialized.")
+end
+
+-- =============================================================================
+-- 5. BOOTSTRAP
 -- =============================================================================
 print("[ChrisM] Initialising subsystems...")
 _G.ESP      = ESP
 _G.Teleport = Teleport
+_G.Hitbox   = HitboxModule
+
 ESP:Init()
 Teleport:Init()
 
@@ -554,7 +654,7 @@ end
 print("[ChrisM] Rayfield loaded OK")
 
 -- =============================================================================
--- 5. UI
+-- 6. UI
 -- =============================================================================
 print("[ChrisM] Building UI...")
 
@@ -619,6 +719,28 @@ Tab1:CreateInput({
     end,
 })
 
+-- ── Combat Tab (NEW) ───────────────────────────────────────
+local Tab3 = Window:CreateTab("🥊 Combat Utilities", nil)
+print("[ChrisM] Combat tab created")
+
+Tab3:CreateToggle({
+    Name         = "Enable Hitbox & Head Expander",
+    CurrentValue = false,
+    Callback     = function(v) HitboxModule:Toggle(v) end,
+})
+
+Tab3:CreateSlider({
+    Name         = "Target Target Nodes Scale",
+    Min          = 2,
+    Max          = 15,
+    CurrentValue = 10,
+    Flag         = "HitboxScaleSlider",
+    Callback     = function(v)
+        HitboxModule.HeadScale = v
+        HitboxModule.HitboxSize = v
+    end,
+})
+
 -- ── Teleport Tab ───────────────────────────────────────────
 local Tab2 = Window:CreateTab("🎯 Teleport", nil)
 print("[ChrisM] Teleport tab created")
@@ -637,7 +759,6 @@ Tab2:CreateInput({
     Callback                 = function(t) TargetName = t end,
 })
 
--- REMOVED SLIDER -> REPLACED WITH SECURE DISTANCE CONFIG TEXT BOX
 Tab2:CreateInput({
     Name                     = "Behind Offset (studs)",
     PlaceholderText          = "15",
