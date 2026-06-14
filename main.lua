@@ -15,76 +15,8 @@ else
     warn("[ChrisM] Workspace CharactersFolder Absent — Activating Player Character Fallbacks.")
 end
 
--- =============================================================================
--- SYSTEM 1: GHOST HITBOX FRAMEWORK (ROOT ONLY CLEAN)
--- =============================================================================
-local HitboxModule = {
-    Active = false,
-    HitboxSize = 10,
-}
-
-local hitboxConnection = nil
-local ModifiedTrackers = {} -- Schema: [character] = { rootSize = Vector3 }
-
-local function applyHitboxExpansion(character)
-    local rootPart = character:FindFirstChild("HumanoidRootPart")
-    if rootPart and rootPart:IsA("BasePart") then
-        if rootPart.Size.X ~= HitboxModule.HitboxSize then
-            rootPart.Size = Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize)
-            rootPart.Transparency = 1 
-            rootPart.CanCollide = false
-        end
-    end
-end
-
-local function resetHitboxCache()
-    for character, originalData in pairs(ModifiedTrackers) do
-        pcall(function()
-            if character and character.Parent then
-                local root = character:FindFirstChild("HumanoidRootPart")
-                if root and originalData.rootSize then
-                    root.Size = originalData.rootSize
-                    root.Transparency = 0
-                end
-            end
-        end)
-    end
-    table.clear(ModifiedTrackers)
-end
-
-function HitboxModule:Toggle(state)
-    self.Active = state
-    if not state then
-        if hitboxConnection then hitboxConnection:Disconnect(); hitboxConnection = nil end
-        resetHitboxCache()
-        print("[ChrisM] Hitbox Engine safely suspended.")
-        return
-    end
-
-    print("[ChrisM] Invoking stable hitbox pipeline...")
-    hitboxConnection = RunService.Heartbeat:Connect(function()
-        if not self.Active then return end
-        local currentPlayers = Players:GetPlayers()
-        for i = 1, #currentPlayers do
-            local player = currentPlayers[i]
-            if player ~= LocalPlayer then
-                local character = CharactersFolder and CharactersFolder:FindFirstChild(player.Name) or player.Character
-                if character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
-                    
-                    if not ModifiedTrackers[character] then
-                        local root = character:FindFirstChild("HumanoidRootPart")
-                        if root then
-                            ModifiedTrackers[character] = {
-                                rootSize = root.Size,
-                            }
-                        end
-                    end
-                    pcall(applyHitboxExpansion, character)
-                end
-            end
-        end
-    end)
-end
+-- Make the characters folder available globally for the external hitbox script
+_G.CharactersFolder = CharactersFolder
 
 -- =============================================================================
 -- SYSTEM 2: EVENT-CACHED 2D RENDERING ENGINE & CHAMS ESP
@@ -586,6 +518,7 @@ function Teleport:StartTracking(targetName, onSuccess, onFail)
 end
 
 function Teleport:StopTracking()
+    if not self.IsTracking then return end
     self.IsTracking = false
     self._currentTarget = nil
     if trackingConnection then trackingConnection:Disconnect(); trackingConnection = nil end
@@ -612,7 +545,7 @@ function Teleport:StopTracking()
 end
 
 function Teleport:Init()
-    parent = Players.PlayerRemoving:Connect(function(p)
+    Players.PlayerRemoving:Connect(function(p)
         if self.IsTracking and self._currentTarget == p then
             setStatus("Target left.", Color3.fromRGB(255, 80, 80))
             self:StopTracking()
@@ -628,7 +561,6 @@ end
 -- =============================================================================
 _G.ESP = ESP
 _G.Teleport = Teleport
-_G.Hitbox = HitboxModule
 
 ESP:Init()
 Teleport:Init()
@@ -701,3 +633,49 @@ Tab2:CreateButton({
     Name = "🔴 Stop Tracking",
     Callback = function()
         if not Teleport.IsTracking then setStatus("Not currently tracking", Color3.fromRGB(150,150,150)) return end
+        Teleport:StopTracking()
+    end,
+})
+
+-- ── TAB 3: COMBAT MANIPULATION INTERFACE (EXTERNAL ROUTED) ─────────────────
+local Tab3 = Window:CreateTab("⚔️ Combat Settings", nil)
+
+Tab3:CreateToggle({
+    Name = "Enable Ghost Hitboxes",
+    CurrentValue = false,
+    Callback = function(v)
+        if _G.Hitbox and _G.Hitbox.Toggle then
+            _G.Hitbox:Toggle(v)
+        else
+            Rayfield:Notify({
+                Title = "Module Missing",
+                Content = "Hitbox engine not running. Please execute your hitbox script first!",
+                Duration = 4,
+                Image = 4483362458
+            })
+        end
+    end
+})
+
+Tab3:CreateInput({
+    Name = "Hitbox Size (studs)",
+    PlaceholderText = "10",
+    RemoveTextAfterFocusLost = false,
+    Callback = function(t)
+        local n = tonumber(t)
+        if n then
+            if _G.Hitbox then
+                _G.Hitbox.HitboxSize = n
+                -- If hitboxes are actively expanded, hot-swap the properties immediately
+                if _G.Hitbox.Active and _G.Hitbox.Toggle then
+                    _G.Hitbox:Toggle(false)
+                    _G.Hitbox:Toggle(true)
+                end
+            else
+                warn("[ChrisM Hub] Delayed allocation: _G.Hitbox is unlinked.")
+            end
+        end
+    end,
+})
+
+print("[ChrisM] Master Window Pipeline Complete.")
