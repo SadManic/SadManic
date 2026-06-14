@@ -16,34 +16,17 @@ else
 end
 
 -- =============================================================================
--- SYSTEM 1: GHOST HITBOX FRAMEWORK
+-- SYSTEM 1: GHOST HITBOX FRAMEWORK (ROOT ONLY CLEAN)
 -- =============================================================================
 local HitboxModule = {
     Active = false,
-    HeadScale = 10,
     HitboxSize = 10,
 }
 
 local hitboxConnection = nil
-local ModifiedTrackers = {} -- Schema: [character] = { rootSize = Vector3, headSize = Vector3, meshScale = Vector3, standardNeck = Vector3 }
+local ModifiedTrackers = {} -- Schema: [character] = { rootSize = Vector3 }
 
 local function applyHitboxExpansion(character)
-    local head = character:FindFirstChild("Head")
-    if head and head:IsA("BasePart") then
-        local mesh = head:FindFirstChildOfClass("SpecialMesh")
-        if mesh then
-            mesh.Scale = Vector3.new(HitboxModule.HeadScale, HitboxModule.HeadScale, HitboxModule.HeadScale)
-        else
-            head.Size = Vector3.new(HitboxModule.HeadScale, HitboxModule.HeadScale, HitboxModule.HeadScale)
-        end
-        
-        local neck = head:FindFirstChild("NeckAttachment") or head:FindFirstChild("FaceCenterAttachment")
-        if neck and neck:IsA("Attachment") then
-            neck.Position = Vector3.new(0, -HitboxModule.HeadScale / 4, 0)
-        end
-        head.CanCollide = false
-    end
-
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if rootPart and rootPart:IsA("BasePart") then
         if rootPart.Size.X ~= HitboxModule.HitboxSize then
@@ -62,22 +45,6 @@ local function resetHitboxCache()
                 if root and originalData.rootSize then
                     root.Size = originalData.rootSize
                     root.Transparency = 0
-                end
-                
-                local head = character:FindFirstChild("Head")
-                if head then
-                    local mesh = head:FindFirstChildOfClass("SpecialMesh")
-                    if mesh and originalData.meshScale then
-                        mesh.Scale = originalData.meshScale
-                    elseif originalData.headSize then
-                        head.Size = originalData.headSize
-                    end
-                    
-                    local neck = head:FindFirstChild("NeckAttachment") or head:FindFirstChild("FaceCenterAttachment")
-                    if neck and originalData.standardNeck then
-                        neck.Position = originalData.standardNeck
-                    end
-                    head.CanCollide = true
                 end
             end
         end)
@@ -106,16 +73,9 @@ function HitboxModule:Toggle(state)
                     
                     if not ModifiedTrackers[character] then
                         local root = character:FindFirstChild("HumanoidRootPart")
-                        local head = character:FindFirstChild("Head")
-                        local neck = head and (head:FindFirstChild("NeckAttachment") or head:FindFirstChild("FaceCenterAttachment"))
-                        local mesh = head and head:FindFirstChildOfClass("SpecialMesh")
-                        
-                        if root and head then
+                        if root then
                             ModifiedTrackers[character] = {
                                 rootSize = root.Size,
-                                headSize = head.Size,
-                                meshScale = mesh and mesh.Scale or Vector3.new(1, 1, 1),
-                                standardNeck = neck and neck.Position or Vector3.new(0, 0, 0)
                             }
                         end
                     end
@@ -320,7 +280,7 @@ local function renderFrame()
                     d.Text.Visible = false
                 end
 
-                -- Structural Bounding Boxes (Ternary Syntax Repaired)
+                -- Structural Bounding Boxes
                 local rootSc, rootOn = camera:WorldToViewportPoint(root.Position)
                 if rootOn and d.Box then
                     local topSc = camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
@@ -358,7 +318,7 @@ local function renderFrame()
                         if d.HealthFill then d.HealthFill.Visible = false end
                     end
 
-                    -- Weapons / Equipment Labels (Cached Lookup)
+                    -- Weapons / Equipment Labels
                     local eq = EquipmentCache[player]
                     local gun = eq and eq.Weapon or "No Weapon"
                     local bag = eq and eq.Backpack
@@ -652,7 +612,7 @@ function Teleport:StopTracking()
 end
 
 function Teleport:Init()
-    Players.PlayerRemoving:Connect(function(p)
+    parent = Players.PlayerRemoving:Connect(function(p)
         if self.IsTracking and self._currentTarget == p then
             setStatus("Target left.", Color3.fromRGB(255, 80, 80))
             self:StopTracking()
@@ -710,7 +670,6 @@ local Tab2 = Window:CreateTab("🎯 Teleport & Targets", nil)
 local TargetName = ""
 local StatusLabel = Tab2:CreateLabel("Status: Idle")
 
--- Dynamic Status Binding Hook
 Teleport:OnStatusChange(function(msg, color)
     pcall(function() StatusLabel:Set("Status: " .. tostring(msg)) end)
 end)
@@ -742,21 +701,3 @@ Tab2:CreateButton({
     Name = "🔴 Stop Tracking",
     Callback = function()
         if not Teleport.IsTracking then setStatus("Not currently tracking", Color3.fromRGB(150,150,150)) return end
-        Teleport:StopTracking()
-    end,
-})
-
--- ── TAB 3: TARGET EXPANSION CONFIGURATION ──────────────────────────────────
-local Tab3 = Window:CreateTab("☠ Target Expander", nil)
-
-Tab3:CreateToggle({ Name = "Enable Hitbox Modification", CurrentValue = false, Callback = function(v) HitboxModule:Toggle(v) end })
-Tab3:CreateInput({
-    Name = "Physical Target Radius (Studs)", PlaceholderText = "10", RemoveTextAfterFocusLost = false,
-    Callback = function(t) local n = tonumber(t); if n then HitboxModule.HitboxSize = n end end,
-})
-Tab3:CreateInput({
-    Name = "Visual Head Mesh Scale Factor", PlaceholderText = "10", RemoveTextAfterFocusLost = false,
-    Callback = function(t) local n = tonumber(t); if n then HitboxModule.HeadScale = n end end,
-})
-
-print("[ChrisM] ✅ Bootstrap Execution Complete — Master Pipeline Active.")
