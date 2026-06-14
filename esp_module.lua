@@ -1,3 +1,6 @@
+-- =============================================================================
+-- PERFORMANCE-OPT_M_ZED 2D DRAWING & CHAMS ESP MODULE
+-- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -11,7 +14,7 @@ local ESP = {
     Boxes = true,
     Names = true,
     WeaponText = true,
-    MaxDistance = 500
+    MaxDistance = 500,
 }
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 5)
@@ -25,16 +28,6 @@ local NAME_TEXT_SIZE = 11
 local NAME_TRANSPARENCY = 0.35
 local NAME_OFFSET_Y = 18
 
-local BODY_PARTS = {
-    ["Head"] = true, ["Torso"] = true, ["UpperTorso"] = true, ["LowerTorso"] = true,
-    ["HumanoidRootPart"] = true, ["Left Arm"] = true, ["Right Arm"] = true,
-    ["Left Leg"] = true, ["Right Leg"] = true, ["LeftUpperArm"] = true,
-    ["LeftLowerArm"] = true, ["LeftHand"] = true, ["RightUpperArm"] = true,
-    ["RightLowerArm"] = true, ["RightHand"] = true, ["LeftUpperLeg"] = true,
-    ["LeftLowerLeg"] = true, ["LeftFoot"] = true, ["RightUpperLeg"] = true,
-    ["RightLowerLeg"] = true, ["RightFoot"] = true,
-}
-
 local SKELETON_BONES = {
     {"Head","UpperTorso"}, {"Head","Torso"},
     {"UpperTorso","LowerTorso"}, {"LowerTorso","HumanoidRootPart"}, {"Torso","HumanoidRootPart"},
@@ -47,63 +40,70 @@ local SKELETON_BONES = {
 }
 
 local ActiveESP = {}
+local EquipmentCache = {} -- Schema: [player] = { Weapon = string, Backpack = string }
+local CharacterConnections = {}
 
 local function newDrawing(kind, props)
-    local d = Drawing.new(kind)
-    for k, v in pairs(props) do d[k] = v end
+    local ok, d = pcall(function()
+        local obj = Drawing.new(kind)
+        for k, v in pairs(props) do obj[k] = v end
+        return obj
+    end)
+    if not ok then return nil end
     return d
 end
 
 local function ensureBones(data, count)
     while #data.Bones < count do
-        table.insert(data.Bones, newDrawing("Line", {
+        local line = newDrawing("Line", {
             Color = Color3.fromRGB(0, 255, 255), Thickness = 1, Visible = false,
-        }))
+        })
+        if line then table.insert(data.Bones, line) end
     end
 end
 
 function ESP:GetTargetCharacterModel(player)
     if CharactersFolder then
-        local target = CharactersFolder:FindFirstChild(player.Name)
-        if target then return target end
+        local t = CharactersFolder:FindFirstChild(player.Name)
+        if t then return t end
     end
     return player.Character
 end
 
-function ESP:GetPlayerEquipment(player)
-    local weaponName = nil
-    local backpackName = nil
-    
-    local character = self:GetTargetCharacterModel(player)
-    if not character then return nil, nil end
+-- Completely optimized to update on events rather than every single frame
+local function updatePlayerEquipment(player)
+    local character = ESP:GetTargetCharacterModel(player)
+    if not character then 
+        EquipmentCache[player] = { Weapon = "No Weapon", Backpack = nil }
+        return 
+    end
+
+    local weaponName, backpackName = nil, nil
 
     for _, child in ipairs(character:GetChildren()) do
-        local nameLower = child.Name:lower()
-
+        local nl = child.Name:lower()
         if child:IsA("Folder") or child:IsA("Model") then
-            if string.find(nameLower, "backpack") or string.find(nameLower, "bag") or string.find(nameLower, "knapsack") then
+            if nl:find("backpack") or nl:find("bag") or nl:find("knapsack") then
                 backpackName = child.Name
             elseif child.Name == "Equipped" or child.Name == "Equipment" then
-                for _, subChild in ipairs(child:GetChildren()) do
-                    if subChild:IsA("Folder") or subChild:IsA("Model") then
-                        local subNameLower = subChild.Name:lower()
-                        if string.find(subNameLower, "backpack") or string.find(subNameLower, "bag") or string.find(subNameLower, "knapsack") then
-                            backpackName = subChild.Name
-                        elseif subChild:FindFirstChild("Muzzle") or subChild:FindFirstChild("SightLine") or subChild:FindFirstChild("Base") then
-                            weaponName = subChild.Name
+                for _, sub in ipairs(child:GetChildren()) do
+                    if sub:IsA("Folder") or sub:IsA("Model") then
+                        local sl = sub.Name:lower()
+                        if sl:find("backpack") or sl:find("bag") or sl:find("knapsack") then
+                            backpackName = sub.Name
+                        elseif sub:FindFirstChild("Muzzle") or sub:FindFirstChild("SightLine") or sub:FindFirstChild("Base") then
+                            weaponName = sub.Name
                         end
                     end
                 end
-                
                 if not weaponName or not backpackName then
-                    local nameAttr = child:GetAttribute("ItemName") or child:GetAttribute("WeaponName")
-                    if nameAttr then
-                        local attrStr = tostring(nameAttr)
-                        local attrLower = attrStr:lower()
-                        if string.find(attrLower, "backpack") or string.find(attrLower, "bag") or string.find(attrLower, "knapsack") then
-                            backpackName = attrStr
+                    local attr = child:GetAttribute("ItemName") or child:GetAttribute("WeaponName")
+                    if attr then
+                        local al = tostring(attr):lower()
+                        if al:find("backpack") or al:find("bag") or al:find("knapsack") then
+                            backpackName = tostring(attr)
                         else
-                            weaponName = attrStr
+                            weaponName = tostring(attr)
                         end
                     end
                 end
@@ -113,46 +113,73 @@ function ESP:GetPlayerEquipment(player)
         end
     end
 
-    return weaponName, backpackName
+    EquipmentCache[player] = {
+        Weapon = weaponName or "No Weapon",
+        Backpack = backpackName
+    }
+end
+
+local function trackCharacterEvents(player)
+    if CharacterConnections[player] then
+        for _, conn in ipairs(CharacterConnections[player]) do conn:Disconnect() end
+    end
+    CharacterConnections[player] = {}
+
+    local function setupConnections(char)
+        if not char then return end
+        updatePlayerEquipment(player)
+        
+        local cAdd = char.ChildAdded:Connect(function() updatePlayerEquipment(player) end)
+        local cRem = char.ChildRemoved:Connect(function() updatePlayerEquipment(player) end)
+        table.insert(CharacterConnections[player], cAdd)
+        table.insert(CharacterConnections[player], cRem)
+    end
+
+    local char = ESP:GetTargetCharacterModel(player)
+    if char then setupConnections(char) end
+    
+    local charAddedConn = player.CharacterAdded:Connect(setupConnections)
+    table.insert(CharacterConnections[player], charAddedConn)
 end
 
 local function createEntry(player)
     if ActiveESP[player] or player == LocalPlayer then return end
     ActiveESP[player] = {
-        Text = newDrawing("Text", { Color = Color3.fromRGB(255, 255, 255), Size = NAME_TEXT_SIZE, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        Box = newDrawing("Square", { Color = ESP_COLOR, Thickness = 1.5, Filled = false, Visible = false }),
-        HealthBg = newDrawing("Square", { Color = Color3.fromRGB(0,0,0), Thickness = 1, Filled = true, Visible = false }),
-        HealthFill = newDrawing("Square", { Color = Color3.fromRGB(0,255,80), Thickness = 1, Filled = true, Visible = false }),
-        WeaponText = newDrawing("Text", { Color = Color3.fromRGB(255, 200, 0), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        BackpackText = newDrawing("Text", { Color = Color3.fromRGB(0, 180, 255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        Cham = nil,
-        Bones = {},
+        Text         = newDrawing("Text",   { Color = Color3.fromRGB(255,255,255), Size = NAME_TEXT_SIZE, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        Box          = newDrawing("Square", { Color = ESP_COLOR, Thickness = 1.5, Filled = false, Visible = false }),
+        HealthBg     = newDrawing("Square", { Color = Color3.fromRGB(0,0,0), Thickness = 1, Filled = true, Visible = false }),
+        HealthFill   = newDrawing("Square", { Color = Color3.fromRGB(0,255,80), Thickness = 1, Filled = true, Visible = false }),
+        WeaponText   = newDrawing("Text",   { Color = Color3.fromRGB(255,200,0), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        BackpackText = newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        Cham         = nil,
+        Bones        = {},
     }
+    trackCharacterEvents(player)
 end
 
 local function removeEntry(player)
     local d = ActiveESP[player]
-    if not d then return end
-    pcall(function()
-        d.Text.Visible = false; d.Text:Remove()
-        d.Box.Visible = false; d.Box:Remove()
-        d.HealthBg.Visible = false; d.HealthBg:Remove()
-        d.HealthFill.Visible = false; d.HealthFill:Remove()
-        d.WeaponText.Visible = false; d.WeaponText:Remove()
-        d.BackpackText.Visible = false; d.BackpackText:Remove()
-        if d.Cham then d.Cham:Destroy() end
-        for _, line in ipairs(d.Bones) do line.Visible = false; line:Remove() end
-    end)
-    ActiveESP[player] = nil
+    if d then
+        pcall(function()
+            for _, key in ipairs({"Text","Box","HealthBg","HealthFill","WeaponText","BackpackText"}) do
+                if d[key] then d[key].Visible = false; d[key]:Remove() end
+            end
+            if d.Cham then d.Cham:Destroy() end
+            for _, line in ipairs(d.Bones) do line.Visible = false; line:Remove() end
+        end)
+        ActiveESP[player] = nil
+    end
+    if CharacterConnections[player] then
+        for _, conn in ipairs(CharacterConnections[player]) do conn:Disconnect() end
+        CharacterConnections[player] = nil
+    end
+    EquipmentCache[player] = nil
 end
 
 local function hideEntry(d)
-    d.Text.Visible = false
-    d.Box.Visible = false
-    d.HealthBg.Visible = false
-    d.HealthFill.Visible = false
-    d.WeaponText.Visible = false
-    d.BackpackText.Visible = false
+    for _, key in ipairs({"Text","Box","HealthBg","HealthFill","WeaponText","BackpackText"}) do
+        if d[key] then d[key].Visible = false end
+    end
     for _, line in ipairs(d.Bones) do line.Visible = false end
     if d.Cham then d.Cham:Destroy(); d.Cham = nil end
 end
@@ -160,101 +187,109 @@ end
 local function renderFrame()
     local camera = Workspace.CurrentCamera
     if not camera then return end
-
     local sorted = {}
 
     for player, d in pairs(ActiveESP) do
         local character = ESP:GetTargetCharacterModel(player)
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        local head = character and character:FindFirstChild("Head")
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local alive = humanoid and humanoid.Health > 0
+        local root      = character and character:FindFirstChild("HumanoidRootPart")
+        local head      = character and character:FindFirstChild("Head")
+        local humanoid  = character and character:FindFirstChildOfClass("Humanoid")
+        local alive     = humanoid and humanoid.Health > 0
 
         if ESP.Enabled and root and head and alive then
-            local camPos = camera.CFrame.Position
-            local dist = (camPos - root.Position).Magnitude
+            local dist    = (camera.CFrame.Position - root.Position).Magnitude
             local _, onSc = camera:WorldToViewportPoint(root.Position)
 
             if onSc and dist > 0.1 and dist <= ESP.MaxDistance then
-                table.insert(sorted, { Player = player, Data = d, Distance = dist, Character = character, Humanoid = humanoid })
+                table.insert(sorted, {
+                    Player    = player,
+                    Data      = d,
+                    Distance  = dist,
+                    Character = character,
+                    Humanoid  = humanoid,
+                })
 
+                -- Name Labels
                 local headPos, headOn = camera:WorldToViewportPoint(head.Position)
-                if headOn and ESP.Names then
+                if headOn and ESP.Names and d.Text then
                     d.Text.Position = Vector2.new(headPos.X, headPos.Y - NAME_OFFSET_Y)
-                    d.Text.Text = player.Name .. " [" .. math.floor(dist) .. "m]"
-                    d.Text.Visible = true
-                else
+                    d.Text.Text     = player.Name .. " [" .. math.floor(dist) .. "m]"
+                    d.Text.Visible  = true
+                elseif d.Text then
                     d.Text.Visible = false
                 end
 
-                local topWorld = head.Position + Vector3.new(0, head.Size.Y / 2, 0)
-                local lFoot = character:FindFirstChild("LeftFoot") or character:FindFirstChild("Left Leg")
-                local rFoot = character:FindFirstChild("RightFoot") or character:FindFirstChild("Right Leg")
-                local bottomWorld = (lFoot and rFoot)
-                    and Vector3.new(root.Position.X, math.min(lFoot.Position.Y, rFoot.Position.Y) - 1, root.Position.Z)
-                    or root.Position - Vector3.new(0, 3, 0)
-
-                local topSc, topOn = camera:WorldToViewportPoint(topWorld)
-                local bottomSc, bottomOn = camera:WorldToViewportPoint(bottomWorld)
-
-                local boxWidth, boxHeight, boxX, boxY
-
-                if topOn and bottomOn then
-                    boxHeight = math.abs(bottomSc.Y - topSc.Y)
-                    boxWidth = boxHeight * 0.45
-                    boxX = topSc.X - boxWidth / 2
-                    boxY = topSc.Y
-
+                -- Calculated 2D Bounding Box
+                local rootSc, rootOn = camera:WorldToViewportPoint(root.Position)
+                if rootOn and d.Box then
+                    local topSc = camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
+                    local bottomSc = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0))
+                    
+                    local boxHeight = math.abs(bottomSc.Y - topSc.Y)
+                    local boxWidth  = boxHeight * 0.55
+                    local boxX      = rootSc.X - boxWidth / 2
+                    local boxY      = topSc.Y
+                    
                     if ESP.Boxes then
-                        d.Box.Size = Vector2.new(boxWidth, boxHeight)
+                        d.Box.Size     = Vector2.new(boxWidth, boxHeight)
                         d.Box.Position = Vector2.new(boxX, boxY)
-                        d.Box.Visible = true
+                        d.Box.Visible  = true
                     else
                         d.Box.Visible = false
                     end
-                else
-                    d.Box.Visible = false
-                end
-
-                local currentGun, currentBackpack = ESP:GetPlayerEquipment(player)
-                local currentYOffset = 4
-
-                if bottomOn and boxHeight and ESP.WeaponText then
-                    d.WeaponText.Position = Vector2.new(topSc.X, boxY + boxHeight + currentYOffset)
-                    d.WeaponText.Text = currentGun or "No Weapon"
-                    d.WeaponText.Visible = true
-                    currentYOffset = currentYOffset + 12
-
-                    if currentBackpack then
-                        d.BackpackText.Position = Vector2.new(topSc.X, boxY + boxHeight + currentYOffset)
-                        d.BackpackText.Text = currentBackpack
-                        d.BackpackText.Visible = true
+                    
+                    -- Health Bars
+                    if ESP.HealthBars and d.HealthBg and d.HealthFill then
+                        local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                        local barX  = boxX - 6
+                        
+                        d.HealthBg.Position = Vector2.new(barX - 1, boxY - 1)
+                        d.HealthBg.Size     = Vector2.new(5, boxHeight + 2)
+                        d.HealthBg.Visible  = true
+                        
+                        local fillH = boxHeight * ratio
+                        d.HealthFill.Position = Vector2.new(barX, boxY + (boxHeight - fillH))
+                        d.HealthFill.Size     = Vector2.new(3, fillH)
+                        d.HealthFill.Color    = Color3.fromRGB(math.floor(255 * (1 - ratio)), math.floor(255 * ratio), 0)
+                        d.HealthFill.Visible  = true
                     else
-                        d.BackpackText.Visible = false
+                        if d.HealthBg then d.HealthBg.Visible = false end
+                        if d.HealthFill then d.HealthFill.Visible = false end
+                    end
+
+                    -- Weapon / Backpack Text (Pulled directly from Event-Driven Cache)
+                    local eq = EquipmentCache[player]
+                    local gun = eq and eq.Weapon or "No Weapon"
+                    local bag = eq and eq.Backpack
+                    local yOff = 4
+
+                    if ESP.WeaponText then
+                        if d.WeaponText then
+                            d.WeaponText.Position = Vector2.new(rootSc.X, boxY + boxHeight + yOff)
+                            d.WeaponText.Text     = gun
+                            d.WeaponText.Visible  = true
+                            yOff = yOff + 12
+                        end
+                        if bag and d.BackpackText then
+                            d.BackpackText.Position = Vector2.new(rootSc.X, boxY + boxHeight + yOff)
+                            d.BackpackText.Text     = bag
+                            d.BackpackText.Visible  = true
+                        elseif d.BackpackText then
+                            d.BackpackText.Visible = false
+                        end
+                    else
+                        if d.WeaponText  then d.WeaponText.Visible  = false end
+                        if d.BackpackText then d.BackpackText.Visible = false end
                     end
                 else
-                    d.WeaponText.Visible = false
-                    d.BackpackText.Visible = false
+                    if d.Box then d.Box.Visible = false end
+                    if d.HealthBg then d.HealthBg.Visible = false end
+                    if d.HealthFill then d.HealthFill.Visible = false end
+                    if d.WeaponText then d.WeaponText.Visible = false end
+                    if d.BackpackText then d.BackpackText.Visible = false end
                 end
 
-                if ESP.HealthBars and humanoid.MaxHealth > 0 and topOn and bottomOn and boxHeight then
-                    local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-                    local barX = boxX - 6
-                    
-                    d.HealthBg.Position = Vector2.new(barX - 1, boxY - 1)
-                    d.HealthBg.Size = Vector2.new(5, boxHeight + 2)
-                    d.HealthBg.Visible = true
-                    
-                    local fillH = boxHeight * ratio
-                    d.HealthFill.Position = Vector2.new(barX, boxY + (boxHeight - fillH))
-                    d.HealthFill.Size = Vector2.new(3, fillH)
-                    d.HealthFill.Color = Color3.fromRGB(math.floor(255 * (1 - ratio)), math.floor(255 * ratio), 0)
-                    d.HealthFill.Visible = true
-                else
-                    d.HealthBg.Visible = false
-                    d.HealthFill.Visible = false
-                end
-
+                -- Skeletons
                 if ESP.Skeleton then
                     local validBones = {}
                     for _, pair in ipairs(SKELETON_BONES) do
@@ -270,11 +305,11 @@ local function renderFrame()
                     end
                     ensureBones(d, #validBones)
                     for i, pts in ipairs(validBones) do
-                        d.Bones[i].From = pts[1]
-                        d.Bones[i].To = pts[2]
+                        d.Bones[i].From    = pts[1]
+                        d.Bones[i].To      = pts[2]
                         d.Bones[i].Visible = true
                     end
-                    for i = #validBones + 1, #d.Bones do d.Bones[i].Visible = false end
+                    for i = #validBones+1, #d.Bones do d.Bones[i].Visible = false end
                 else
                     for _, line in ipairs(d.Bones) do line.Visible = false end
                 end
@@ -286,20 +321,31 @@ local function renderFrame()
         end
     end
 
+    -- Sorting & Z-Indexing Layer Control
     table.sort(sorted, function(a, b) return a.Distance < b.Distance end)
     for i, item in ipairs(sorted) do
         local d = item.Data
+        local targetZIndex = 1000 - math.clamp(math.floor(item.Distance), 0, 900)
+        
+        d.Text.ZIndex = targetZIndex
+        d.Box.ZIndex = targetZIndex
+        d.HealthBg.ZIndex = targetZIndex
+        d.HealthFill.ZIndex = targetZIndex
+        d.WeaponText.ZIndex = targetZIndex
+        d.BackpackText.ZIndex = targetZIndex
+
+        -- Chams Cap Limit Processing
         if ESP.Chams and i <= MAX_CHAMS and item.Distance <= ENGINE_CHAM_LIMIT then
             if not d.Cham or d.Cham.Parent ~= item.Character then
                 if d.Cham then d.Cham:Destroy() end
                 local hl = Instance.new("Highlight")
-                hl.FillColor = ESP_COLOR
-                hl.OutlineColor = OUTLINE_COLOR
-                hl.FillTransparency = FILL_TRANSPARENCY
+                hl.FillColor           = ESP_COLOR
+                hl.OutlineColor        = OUTLINE_COLOR
+                hl.FillTransparency    = FILL_TRANSPARENCY
                 hl.OutlineTransparency = 0
-                hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-                hl.Adornee = item.Character
-                hl.Parent = item.Character
+                hl.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+                hl.Adornee             = item.Character
+                hl.Parent              = item.Character
                 d.Cham = hl
             end
         else
@@ -314,18 +360,15 @@ local function renderFrame()
     end
 end
 
-function ESP:SetEnabled(state)
-    self.Enabled = state
-    if not state then
-        self.Chams = false
-        self.HealthBars = false
-        self.Skeleton = false
+function ESP:SetEnabled(s)
+    self.Enabled = s
+    if not s then
         for _, d in pairs(ActiveESP) do hideEntry(d) end
     end
 end
 
-function ESP:SetChams(state) self.Chams = state end
-function ESP:SetSkeleton(state) self.Skeleton = state end
+function ESP:SetChams(s) self.Chams = s end
+function ESP:SetSkeleton(s) self.Skeleton = s end
 
 function ESP:Init()
     for _, p in ipairs(Players:GetPlayers()) do createEntry(p) end
@@ -334,4 +377,5 @@ function ESP:Init()
     RunService:BindToRenderStep("ESPRenderPipeline", Enum.RenderPriority.Camera.Value + 1, renderFrame)
 end
 
+_G.ESP = ESP
 return ESP
