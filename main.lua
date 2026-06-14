@@ -124,14 +124,14 @@ end
 local function createEntry(player)
     if ActiveESP[player] or player == LocalPlayer then return end
     ActiveESP[player] = {
-        Text        = newDrawing("Text",   { Color = Color3.fromRGB(255,255,255), Size = NAME_TEXT_SIZE, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        Box         = newDrawing("Square", { Color = ESP_COLOR, Thickness = 1.5, Filled = false, Visible = false }),
-        HealthBg    = newDrawing("Square", { Color = Color3.fromRGB(0,0,0), Thickness = 1, Filled = true, Visible = false }),
-        HealthFill  = newDrawing("Square", { Color = Color3.fromRGB(0,255,80), Thickness = 1, Filled = true, Visible = false }),
-        WeaponText  = newDrawing("Text",   { Color = Color3.fromRGB(255,200,0), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        BackpackText= newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        Cham        = nil,
-        Bones       = {},
+        Text         = newDrawing("Text",   { Color = Color3.fromRGB(255,255,255), Size = NAME_TEXT_SIZE, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        Box          = newDrawing("Square", { Color = ESP_COLOR, Thickness = 1.5, Filled = false, Visible = false }),
+        HealthBg     = newDrawing("Square", { Color = Color3.fromRGB(0,0,0), Thickness = 1, Filled = true, Visible = false }),
+        HealthFill   = newDrawing("Square", { Color = Color3.fromRGB(0,255,80), Thickness = 1, Filled = true, Visible = false }),
+        WeaponText   = newDrawing("Text",   { Color = Color3.fromRGB(255,200,0), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        BackpackText = newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        Cham         = nil,
+        Bones        = {},
     }
 end
 
@@ -174,7 +174,13 @@ local function renderFrame()
                 local _, onSc = camera:WorldToViewportPoint(root.Position)
 
                 if onSc and dist > 0.1 and dist <= ESP.MaxDistance then
-                    table.insert(sorted, { Player = player, Data = d, Distance = dist, Character = character, Humanoid = humanoid })
+                    table.insert(sorted, {
+                        Player    = player,
+                        Data      = d,
+                        Distance  = dist,
+                        Character = character,
+                        Humanoid  = humanoid,
+                    })
 
                     -- Name
                     local headPos, headOn = camera:WorldToViewportPoint(head.Position)
@@ -187,21 +193,22 @@ local function renderFrame()
                     end
 
                     -- Box
-                    local topWorld   = head.Position + Vector3.new(0, head.Size.Y/2, 0)
-                    local lFoot      = character:FindFirstChild("LeftFoot")  or character:FindFirstChild("Left Leg")
-                    local rFoot      = character:FindFirstChild("RightFoot") or character:FindFirstChild("Right Leg")
-                    local bottomWorld= (lFoot and rFoot)
+                    local topWorld    = head.Position + Vector3.new(0, head.Size.Y/2, 0)
+                    local lFoot       = character:FindFirstChild("LeftFoot")  or character:FindFirstChild("Left Leg")
+                    local rFoot       = character:FindFirstChild("RightFoot") or character:FindFirstChild("Right Leg")
+                    local bottomWorld = (lFoot and rFoot)
                         and Vector3.new(root.Position.X, math.min(lFoot.Position.Y, rFoot.Position.Y)-1, root.Position.Z)
-                        or  root.Position - Vector3.new(0,3,0)
+                        or  root.Position - Vector3.new(0, 3, 0)
 
-                    local topSc, topOn       = camera:WorldToViewportPoint(topWorld)
+                    local topSc,    topOn    = camera:WorldToViewportPoint(topWorld)
                     local bottomSc, bottomOn = camera:WorldToViewportPoint(bottomWorld)
 
                     local boxWidth, boxHeight, boxX, boxY
+
                     if topOn and bottomOn and d.Box then
                         boxHeight = math.abs(bottomSc.Y - topSc.Y)
                         boxWidth  = boxHeight * 0.45
-                        boxX      = topSc.X - boxWidth/2
+                        boxX      = topSc.X - boxWidth / 2
                         boxY      = topSc.Y
                         if ESP.Boxes then
                             d.Box.Size     = Vector2.new(boxWidth, boxHeight)
@@ -215,8 +222,8 @@ local function renderFrame()
                     end
 
                     -- Weapon / Backpack
-                    local gun, bag     = ESP:GetPlayerEquipment(player)
-                    local yOff         = 4
+                    local gun, bag = ESP:GetPlayerEquipment(player)
+                    local yOff     = 4
                     if bottomOn and boxHeight and ESP.WeaponText then
                         if d.WeaponText then
                             d.WeaponText.Position = Vector2.new(topSc.X, boxY + boxHeight + yOff)
@@ -238,7 +245,7 @@ local function renderFrame()
 
                     -- Health bar
                     if ESP.HealthBars and humanoid.MaxHealth > 0 and topOn and bottomOn and boxHeight then
-                        local ratio = math.clamp(humanoid.Health/humanoid.MaxHealth, 0, 1)
+                        local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
                         local barX  = boxX - 6
                         if d.HealthBg then
                             d.HealthBg.Position = Vector2.new(barX-1, boxY-1)
@@ -249,8 +256,12 @@ local function renderFrame()
                             local fillH = boxHeight * ratio
                             d.HealthFill.Position = Vector2.new(barX, boxY+(boxHeight-fillH))
                             d.HealthFill.Size     = Vector2.new(3, fillH)
-                            d.HealthFill.Color    = Color3.fromRGB(math.floor(255*(1-ratio)), math.floor(255*ratio), 0)
-                            d.HealthFill.Visible  = true
+                            d.HealthFill.Color    = Color3.fromRGB(
+                                math.floor(255*(1-ratio)),
+                                math.floor(255*ratio),
+                                0
+                            )
+                            d.HealthFill.Visible = true
                         end
                     else
                         if d.HealthBg   then d.HealthBg.Visible   = false end
@@ -267,7 +278,10 @@ local function renderFrame()
                                 local sA, onA = camera:WorldToViewportPoint(pA.Position)
                                 local sB, onB = camera:WorldToViewportPoint(pB.Position)
                                 if onA and onB then
-                                    table.insert(validBones, {Vector2.new(sA.X,sA.Y), Vector2.new(sB.X,sB.Y)})
+                                    table.insert(validBones, {
+                                        Vector2.new(sA.X, sA.Y),
+                                        Vector2.new(sB.X, sB.Y),
+                                    })
                                 end
                             end
                         end
@@ -277,7 +291,9 @@ local function renderFrame()
                             d.Bones[i].To      = pts[2]
                             d.Bones[i].Visible = true
                         end
-                        for i = #validBones+1, #d.Bones do d.Bones[i].Visible = false end
+                        for i = #validBones+1, #d.Bones do
+                            d.Bones[i].Visible = false
+                        end
                     else
                         for _, line in ipairs(d.Bones) do line.Visible = false end
                     end
@@ -291,7 +307,7 @@ local function renderFrame()
         end
 
         -- Chams
-        table.sort(sorted, function(a,b) return a.Distance < b.Distance end)
+        table.sort(sorted, function(a, b) return a.Distance < b.Distance end)
         for i, item in ipairs(sorted) do
             local d = item.Data
             if ESP.Chams and i <= MAX_CHAMS and item.Distance <= ENGINE_CHAM_LIMIT then
@@ -324,8 +340,13 @@ local function renderFrame()
     end
 end
 
-function ESP:SetEnabled(s) self.Enabled = s; if not s then for _,d in pairs(ActiveESP) do hideEntry(d) end end end
-function ESP:SetChams(s)   self.Chams = s end
+function ESP:SetEnabled(s)
+    self.Enabled = s
+    if not s then
+        for _, d in pairs(ActiveESP) do hideEntry(d) end
+    end
+end
+function ESP:SetChams(s)    self.Chams    = s end
 function ESP:SetSkeleton(s) self.Skeleton = s end
 
 function ESP:Init()
@@ -333,7 +354,11 @@ function ESP:Init()
     for _, p in ipairs(Players:GetPlayers()) do createEntry(p) end
     Players.PlayerAdded:Connect(createEntry)
     Players.PlayerRemoving:Connect(removeEntry)
-    RunService:BindToRenderStep("ESPRenderPipeline", Enum.RenderPriority.Camera.Value+1, renderFrame)
+    RunService:BindToRenderStep(
+        "ESPRenderPipeline",
+        Enum.RenderPriority.Camera.Value + 1,
+        renderFrame
+    )
     print("[ChrisM] ESP render pipeline bound")
 end
 
@@ -341,16 +366,18 @@ end
 -- 3. TELEPORT
 -- =============================================================================
 local Teleport = {
-    BehindOffset    = 15,
-    IsTracking      = false,
-    _currentTarget  = nil,
+    BehindOffset   = 15,
+    IsTracking     = false,
+    _currentTarget = nil,
 }
 
 local trackingConnection = nil
 local onStatusChange     = nil
 
 local function setStatus(msg, color)
-    if onStatusChange then onStatusChange(msg, color or Color3.new(0.5,0.5,0.5)) end
+    if onStatusChange then
+        onStatusChange(msg, color or Color3.new(0.5, 0.5, 0.5))
+    end
 end
 
 local function getTargetCharacterModel(player)
@@ -366,8 +393,8 @@ local function findPlayer(name)
     local lower = name:lower()
     for _, p in ipairs(Players:GetPlayers()) do
         if p == LocalPlayer then continue end
-        if p.Name:lower():sub(1,#lower) == lower
-        or p.DisplayName:lower():sub(1,#lower) == lower then
+        if p.Name:lower():sub(1, #lower) == lower
+        or p.DisplayName:lower():sub(1, #lower) == lower then
             return p
         end
     end
@@ -381,13 +408,15 @@ local function safeCFrame(targetRoot, targetChar, myChar)
 
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { myChar, targetChar, Workspace.CurrentCamera, Players }
+    params.FilterDescendantsInstances = {
+        myChar, targetChar, Workspace.CurrentCamera, Players
+    }
     params.IgnoreWater = true
 
     local wallHit  = Workspace:Raycast(cf.Position, ideal - cf.Position, params)
-    local pos      = wallHit and (wallHit.Position + wallHit.Normal*2.5) or ideal
-    local floorHit = Workspace:Raycast(pos + Vector3.new(0,4,0), Vector3.new(0,-12,0), params)
-    if floorHit then pos = Vector3.new(pos.X, floorHit.Position.Y+3, pos.Z) end
+    local pos      = wallHit and (wallHit.Position + wallHit.Normal * 2.5) or ideal
+    local floorHit = Workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -12, 0), params)
+    if floorHit then pos = Vector3.new(pos.X, floorHit.Position.Y + 3, pos.Z) end
     return CFrame.new(pos, pos + cf.LookVector)
 end
 
@@ -411,7 +440,9 @@ local function doTeleport()
     myRoot.AssemblyAngularVelocity = Vector3.zero
 end
 
-function Teleport:OnStatusChange(cb) onStatusChange = cb end
+function Teleport:OnStatusChange(cb)
+    onStatusChange = cb
+end
 
 function Teleport:Once(targetName, onDone)
     if self.IsTracking then self:StopTracking() end
@@ -420,7 +451,7 @@ function Teleport:Once(targetName, onDone)
     local myChar     = getTargetCharacterModel(LocalPlayer)
 
     if not target or not targetChar then
-        setStatus("Player not found.", Color3.fromRGB(255,80,80))
+        setStatus("Player not found.", Color3.fromRGB(255, 80, 80))
         if onDone then onDone(false) end
         return
     end
@@ -428,7 +459,10 @@ function Teleport:Once(targetName, onDone)
     local myRoot  = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myHuman = myChar and myChar:FindFirstChildOfClass("Humanoid")
     local tgtRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    if not (myRoot and myHuman and tgtRoot) then if onDone then onDone(false) end return end
+    if not (myRoot and myHuman and tgtRoot) then
+        if onDone then onDone(false) end
+        return
+    end
 
     myRoot.Anchored       = true
     myHuman.PlatformStand = true
@@ -442,7 +476,7 @@ function Teleport:Once(targetName, onDone)
     myHuman.PlatformStand = false
     myHuman:ChangeState(Enum.HumanoidStateType.Running)
     myRoot.Anchored = false
-    setStatus("Teleported to "..target.Name..".", Color3.fromRGB(0,200,80))
+    setStatus("Teleported to " .. target.Name .. ".", Color3.fromRGB(0, 200, 80))
     if onDone then onDone(true) end
 end
 
@@ -450,13 +484,13 @@ function Teleport:StartTracking(targetName, onSuccess, onFail)
     if self.IsTracking then return end
     local target = findPlayer(targetName)
     if not target then
-        setStatus("Player not found.", Color3.fromRGB(255,80,80))
+        setStatus("Player not found.", Color3.fromRGB(255, 80, 80))
         if onFail then onFail() end
         return
     end
     self._currentTarget = target
     self.IsTracking     = true
-    setStatus("Tracking "..target.Name.."...", Color3.fromRGB(0,213,255))
+    setStatus("Tracking " .. target.Name .. "...", Color3.fromRGB(0, 213, 255))
     if onSuccess then onSuccess(target) end
     trackingConnection = RunService.Heartbeat:Connect(function()
         local ok, err = pcall(doTeleport)
@@ -467,7 +501,10 @@ end
 function Teleport:StopTracking()
     self.IsTracking     = false
     self._currentTarget = nil
-    if trackingConnection then trackingConnection:Disconnect(); trackingConnection = nil end
+    if trackingConnection then
+        trackingConnection:Disconnect()
+        trackingConnection = nil
+    end
     local myChar = getTargetCharacterModel(LocalPlayer)
     if myChar then
         local myRoot  = myChar:FindFirstChild("HumanoidRootPart")
@@ -486,13 +523,13 @@ function Teleport:StopTracking()
             myRoot.Anchored = false
         end
     end
-    setStatus("Idle", Color3.fromRGB(150,150,150))
+    setStatus("Idle", Color3.fromRGB(150, 150, 150))
 end
 
 function Teleport:Init()
     Players.PlayerRemoving:Connect(function(p)
         if self.IsTracking and self._currentTarget == p then
-            setStatus("Target left.", Color3.fromRGB(255,80,80))
+            setStatus("Target left.", Color3.fromRGB(255, 80, 80))
             self:StopTracking()
         end
     end)
@@ -508,7 +545,6 @@ _G.Teleport = Teleport
 ESP:Init()
 Teleport:Init()
 
--- Load Rayfield
 print("[ChrisM] Fetching Rayfield...")
 local rayfieldSrc = game:HttpGet('https://sirius.menu/rayfield')
 print("[ChrisM] Rayfield source size: " .. #rayfieldSrc .. " bytes")
@@ -521,7 +557,7 @@ print("[ChrisM] Rayfield compiled OK, executing...")
 
 local Rayfield = rayfieldFn()
 if not Rayfield then
-    error("[ChrisM] Rayfield returned nil — trying fallback URL...")
+    error("[ChrisM] Rayfield returned nil")
 end
 print("[ChrisM] Rayfield loaded OK")
 
@@ -531,14 +567,14 @@ print("[ChrisM] Rayfield loaded OK")
 print("[ChrisM] Building UI...")
 
 local Window = Rayfield:CreateWindow({
-    Name                  = "ChrisM Hub",
-    Icon                  = 0,
-    LoadingTitle          = "ChrisM Hub",
-    LoadingSubtitle       = "Apocalypse Rising 2",
-    Theme                 = "Default",
+    Name                   = "ChrisM Hub",
+    Icon                   = 0,
+    LoadingTitle           = "ChrisM Hub",
+    LoadingSubtitle        = "Apocalypse Rising 2",
+    Theme                  = "Default",
     DisableRayfieldPrompts = false,
-    DisableBuildWarnings  = true,
-    ConfigurationSaving   = { Enabled = false },
+    DisableBuildWarnings   = true,
+    ConfigurationSaving    = { Enabled = false },
 })
 print("[ChrisM] Window created")
 
@@ -546,18 +582,49 @@ print("[ChrisM] Window created")
 local Tab1 = Window:CreateTab("👁 Player ESP", nil)
 print("[ChrisM] ESP tab created")
 
-Tab1:CreateToggle({ Name = "Enable ESP",        CurrentValue = false, Callback = function(v) ESP:SetEnabled(v) end })
-Tab1:CreateToggle({ Name = "Boxes",             CurrentValue = true,  Callback = function(v) ESP.Boxes = v end })
-Tab1:CreateToggle({ Name = "Names",             CurrentValue = true,  Callback = function(v) ESP.Names = v end })
-Tab1:CreateToggle({ Name = "Weapon Labels",     CurrentValue = true,  Callback = function(v) ESP.WeaponText = v end })
-Tab1:CreateToggle({ Name = "Chams",             CurrentValue = false, Callback = function(v) ESP:SetChams(v) end })
-Tab1:CreateToggle({ Name = "Health Bars",       CurrentValue = false, Callback = function(v) ESP.HealthBars = v end })
-Tab1:CreateToggle({ Name = "Skeleton",          CurrentValue = false, Callback = function(v) ESP:SetSkeleton(v) end })
+Tab1:CreateToggle({
+    Name         = "Enable ESP",
+    CurrentValue = false,
+    Callback     = function(v) ESP:SetEnabled(v) end,
+})
+Tab1:CreateToggle({
+    Name         = "Boxes",
+    CurrentValue = true,
+    Callback     = function(v) ESP.Boxes = v end,
+})
+Tab1:CreateToggle({
+    Name         = "Names",
+    CurrentValue = true,
+    Callback     = function(v) ESP.Names = v end,
+})
+Tab1:CreateToggle({
+    Name         = "Weapon Labels",
+    CurrentValue = true,
+    Callback     = function(v) ESP.WeaponText = v end,
+})
+Tab1:CreateToggle({
+    Name         = "Chams",
+    CurrentValue = false,
+    Callback     = function(v) ESP:SetChams(v) end,
+})
+Tab1:CreateToggle({
+    Name         = "Health Bars",
+    CurrentValue = false,
+    Callback     = function(v) ESP.HealthBars = v end,
+})
+Tab1:CreateToggle({
+    Name         = "Skeleton",
+    CurrentValue = false,
+    Callback     = function(v) ESP:SetSkeleton(v) end,
+})
 Tab1:CreateInput({
-    Name                 = "Max Distance (m)",
-    PlaceholderText      = "500",
+    Name                     = "Max Distance (m)",
+    PlaceholderText          = "500",
     RemoveTextAfterFocusLost = false,
-    Callback             = function(t) local n = tonumber(t); if n then ESP.MaxDistance = n end end,
+    Callback                 = function(t)
+        local n = tonumber(t)
+        if n then ESP.MaxDistance = n end
+    end,
 })
 
 -- ── Teleport Tab ───────────────────────────────────────────
@@ -572,10 +639,10 @@ Teleport:OnStatusChange(function(msg, _)
 end)
 
 Tab2:CreateInput({
-    Name                 = "Target Username",
-    PlaceholderText      = "Username...",
+    Name                     = "Target Username",
+    PlaceholderText          = "Username...",
     RemoveTextAfterFocusLost = false,
-    Callback             = function(t) TargetName = t end,
+    Callback                 = function(t) TargetName = t end,
 })
 
 Tab2:CreateSlider({
@@ -588,18 +655,50 @@ Tab2:CreateSlider({
 
 Tab2:CreateButton({
     Name     = "⚡ One-Time Teleport",
-    Callback = function() Teleport:Once(TargetName) end,
+    Callback = function()
+        if TargetName == "" then
+            pcall(function() StatusLabel:Set("Status: Enter a username first!") end)
+            return
+        end
+        Teleport:Once(TargetName)
+    end,
 })
 
-Tab2:CreateToggle({
-    Name         = "🔄 Loop Tracking",
-    CurrentValue = false,
-    Callback     = function(state)
-        if state then
-            Teleport:StartTracking(TargetName)
-        else
-            Teleport:StopTracking()
+Tab2:CreateButton({
+    Name     = "🟢 Start Loop Tracking",
+    Callback = function()
+        if Teleport.IsTracking then
+            pcall(function() StatusLabel:Set("Status: Already tracking!") end)
+            return
         end
+        if TargetName == "" then
+            pcall(function() StatusLabel:Set("Status: Enter a username first!") end)
+            return
+        end
+        Teleport:StartTracking(
+            TargetName,
+            function(target)
+                pcall(function()
+                    StatusLabel:Set("Status: 🟢 Tracking " .. target.Name .. "...")
+                end)
+            end,
+            function()
+                pcall(function()
+                    StatusLabel:Set("Status: ❌ Player not found")
+                end)
+            end
+        )
+    end,
+})
+
+Tab2:CreateButton({
+    Name     = "🔴 Stop Tracking",
+    Callback = function()
+        if not Teleport.IsTracking then
+            pcall(function() StatusLabel:Set("Status: Not currently tracking") end)
+            return
+        end
+        Teleport:StopTracking()
     end,
 })
 
