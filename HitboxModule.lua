@@ -1,5 +1,5 @@
 -- =============================================================================
--- MANIC EXECUTOR COMBAT UTILITY SUITE: HITBOX COMPLIANCE MODULE (STRIPPED)
+-- MANIC EXECUTOR COMBAT UTILITY SUITE: HITBOX COMPLIANCE MODULE (PRODUCTION)
 -- =============================================================================
 local HitboxModule = {}
 
@@ -8,7 +8,7 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
--- Internal tracking states
+-- Internal engine tracking anchors
 local masterConnection = nil
 local gameMetatable = nil
 local oldIndex = nil
@@ -16,7 +16,7 @@ local oldNewIndex = nil
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 5)
 
--- Global adjustments managed via the module references
+-- Configuration interfaces mapped straight to the main bootstrapper
 HitboxModule.Active = false
 HitboxModule.HeadScale = 10
 HitboxModule.HitboxSize = 10
@@ -40,14 +40,15 @@ local function applyExpansion(character)
         head.CanCollide = false
     end
 
-    -- 2. Spoofed Physical Hitbox Expansion (Invisible)
+    -- 2. Spoofed Physical Hitbox Expansion (Invisible & Hook-Bypassed)
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if rootPart and rootPart:IsA("BasePart") then
-        setreadonly(gameMetatable, false)
-        rootPart.Size = Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize)
-        rootPart.Transparency = 1 -- Completely invisible to blend with vanilla visuals
-        rootPart.CanCollide = false
-        setreadonly(gameMetatable, true)
+        -- Direct assignment bypasses the local __newindex filter blocks safely
+        if oldNewIndex then
+            oldNewIndex(rootPart, "Size", Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize))
+            oldNewIndex(rootPart, "Transparency", 1) -- Completely invisible to preserve custom ESP lines
+            oldNewIndex(rootPart, "CanCollide", false)
+        end
     end
 end
 
