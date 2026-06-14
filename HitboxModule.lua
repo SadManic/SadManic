@@ -1,29 +1,17 @@
 -- =============================================================================
--- MANIC EXECUTOR COMBAT UTILITY SUITE: HITBOX COMPLIANCE MODULE (PRODUCTION)
+-- 4. GHOST HITBOX SYSTEM (STABLE HYBRID ENGINE)
 -- =============================================================================
-local HitboxModule = {}
+local HitboxModule = {
+    Active = false,
+    HeadScale = 10,
+    HitboxSize = 10,
+}
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local LocalPlayer = Players.LocalPlayer
+local hitboxConnection = nil
+local ModifiedTrackers = {}
 
--- Internal engine tracking anchors
-local masterConnection = nil
-local gameMetatable = nil
-local oldIndex = nil
-local oldNewIndex = nil
-
-local CharactersFolder = Workspace:WaitForChild("Characters", 5)
-
--- Configuration interfaces mapped straight to the main bootstrapper
-HitboxModule.Active = false
-HitboxModule.HeadScale = 10
-HitboxModule.HitboxSize = 10
-
--- Core internal asset pipeline (STRICTLY PHYSICAL DATA CHANGES)
-local function applyExpansion(character)
-    -- 1. Anti-Freeze Head Mesh Scaling
+local function applyHitboxExpansion(character)
+    -- 1. Anti-Freeze Dynamic Mesh Scaling
     local head = character:FindFirstChild("Head")
     if head and head:IsA("BasePart") then
         local mesh = head:FindFirstChildOfClass("SpecialMesh")
@@ -40,75 +28,64 @@ local function applyExpansion(character)
         head.CanCollide = false
     end
 
-    -- 2. Spoofed Physical Hitbox Expansion (Invisible & Hook-Bypassed)
+    -- 2. Hookless Physical Hitbox Transformation
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if rootPart and rootPart:IsA("BasePart") then
-        -- Direct assignment bypasses the local __newindex filter blocks safely
-        if oldNewIndex then
-            oldNewIndex(rootPart, "Size", Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize))
-            oldNewIndex(rootPart, "Transparency", 1) -- Completely invisible to preserve custom ESP lines
-            oldNewIndex(rootPart, "CanCollide", false)
+        if rootPart.Size.X ~= HitboxModule.HitboxSize then
+            rootPart.Size = Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize)
+            rootPart.Transparency = 1 
+            rootPart.CanCollide = false
         end
     end
 end
 
--- Hook initialization matrix
-local function initMetatables()
-    if oldIndex and oldNewIndex then return end -- Already hooked safely
-
-    gameMetatable = getrawmetatable(game)
-    oldIndex = gameMetatable.__index
-    oldNewIndex = gameMetatable.__newindex
-    setreadonly(gameMetatable, false)
-
-    gameMetatable.__index = newcclosure(function(self, key)
-        if HitboxModule.Active and typeof(self) == "Instance" and self:IsA("Part") and self.Name == "HumanoidRootPart" then
-            if key == "Size" then return Vector3.new(2, 2, 1)
-            elseif key == "Transparency" then return 1 end
-        end
-        return oldIndex(self, key)
-    end)
-
-    gameMetatable.__newindex = newcclosure(function(self, key, value)
-        if HitboxModule.Active and typeof(self) == "Instance" and self:IsA("Part") and self.Name == "HumanoidRootPart" then
-            if key == "Size" or key == "Transparency" or key == "CFrame" then return end
-        end
-        return oldNewIndex(self, key, value)
-    end)
-    
-    setreadonly(gameMetatable, true)
+local function resetHitboxCache()
+    for character, originalSize in pairs(ModifiedTrackers) do
+        pcall(function()
+            if character and character:FindFirstChild("HumanoidRootPart") then
+                character.HumanoidRootPart.Size = Vector3.new(2, 2, 1)
+            end
+        end)
+    end
+    table.clear(ModifiedTrackers)
 end
 
--- Public Operational Controls
-function HitboxModule.Toggle(state)
-    HitboxModule.Active = state
-    
+function HitboxModule:Toggle(state)
+    self.Active = state
     if not state then
-        if masterConnection then
-            masterConnection:Disconnect()
-            masterConnection = nil
+        if hitboxConnection then
+            hitboxConnection:Disconnect()
+            hitboxConnection = nil
         end
-        print("[Manic Module] Hitbox engine offline.")
+        resetHitboxCache()
+        print("[ChrisM] Hitbox engine safely suspended.")
         return
     end
 
-    assert(hookmetamethod, "CRITICAL ERROR: Environment missing hookmetamethod capabilities.")
-    initMetatables()
+    print("[ChrisM] Running stable hitbox framework pipeline...")
 
-    -- Run processing pipeline loop
-    masterConnection = RunService.Heartbeat:Connect(function()
-        if not HitboxModule.Active then return end
+    hitboxConnection = RunService.Heartbeat:Connect(function()
+        if not self.Active then return end
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer then
                 local character = CharactersFolder and CharactersFolder:FindFirstChild(player.Name) or player.Character
                 if character and character:FindFirstChild("Humanoid") and character.Humanoid.Health > 0 then
-                    pcall(applyExpansion, character)
+                    if not ModifiedTrackers[character] then
+                        local root = character:FindFirstChild("HumanoidRootPart")
+                        if root then ModifiedTrackers[character] = root.Size end
+                    end
+                    pcall(applyHitboxExpansion, character)
                 end
             end
         end
     end)
-
-    print("[Manic Module] Hitbox engine running and spoofing.")
+    print("[ChrisM] Stable Target Expanders Active.")
 end
 
-return HitboxModule
+-- =============================================================================
+-- 5. BOOTSTRAP (GLOBAL ALLOCATION DEFINITION)
+-- =============================================================================
+print("[ChrisM] Initialising subsystems...")
+_G.ESP      = ESP
+_G.Teleport = Teleport
+_G.Hitbox   = HitboxModule -- Declared globally so Rayfield UI can read it instantly!
