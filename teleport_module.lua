@@ -1,3 +1,6 @@
+-- =============================================================================
+-- HARDENED ANTI-CHEAT THROTTLED TELEPORT ENGINE
+-- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -6,7 +9,8 @@ local LocalPlayer = Players.LocalPlayer
 local Teleport = {
     BehindOffset = 15,
     IsTracking = false,
-    _currentTarget = nil
+    _currentTarget = nil,
+    ThrottleInterval = 0.1 -- Safe threshold to prevent absolute position replication kicks
 }
 
 local CharactersFolder = Workspace:WaitForChild("Characters", 5)
@@ -50,9 +54,11 @@ local function safeCFrame(targetRoot, targetChar, myChar)
     params.FilterDescendantsInstances = { myChar, targetChar, Workspace.CurrentCamera, Players }
     params.IgnoreWater = true
 
+    -- Raycast 1: Wall/Geometry Check
     local wallHit = Workspace:Raycast(cf.Position, ideal - cf.Position, params)
     local pos = wallHit and (wallHit.Position + wallHit.Normal * 2.5) or ideal
 
+    -- Raycast 2: Ground Floor Alignment Check
     local floorHit = Workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -12, 0), params)
     if floorHit then pos = Vector3.new(pos.X, floorHit.Position.Y + 3, pos.Z) end
 
@@ -71,7 +77,9 @@ local function doTeleport()
     local tgtRoot = targetChar:FindFirstChild("HumanoidRootPart")
 
     if not (myRoot and myHuman and tgtRoot) then return end
+    if myHuman.Health <= 0 then return end -- Abort if you are dead
 
+    -- Force physics state to unlock absolute tracking placement
     if myHuman:GetState() ~= Enum.HumanoidStateType.Physics then
         myHuman.PlatformStand = true
         myHuman:ChangeState(Enum.HumanoidStateType.Physics)
@@ -112,6 +120,7 @@ function Teleport:Once(targetName, onDone)
     myHuman.PlatformStand = true
     myHuman:ChangeState(Enum.HumanoidStateType.Physics)
 
+    -- Stream environment context securely around the target area
     if LocalPlayer.RequestStreamAroundAsync then
         pcall(function() LocalPlayer:RequestStreamAroundAsync(tgtRoot.Position) end)
     end
@@ -147,9 +156,17 @@ function Teleport:StartTracking(targetName, onSuccess, onFail)
     setStatus("Tracking " .. target.Name .. "...", Color3.fromRGB(0, 213, 255))
     if onSuccess then onSuccess(target) end
 
+    local lastUpdate = 0
     trackingConnection = RunService.Heartbeat:Connect(function()
-        local ok, err = pcall(doTeleport)
-        if not ok then warn("Tracking error: " .. tostring(err)) end
+        if not self.IsTracking then return end
+        
+        -- Custom timing clock step throttle window
+        local now = os.clock()
+        if now - lastUpdate >= self.ThrottleInterval then
+            lastUpdate = now
+            local ok, err = pcall(doTeleport)
+            if not ok then warn("Tracking error: " .. tostring(err)) end
+        end
     end)
 end
 
@@ -185,12 +202,21 @@ function Teleport:StopTracking()
 end
 
 function Teleport:Init()
+    -- Safety clean up hook if target leaves game mid-execution
     Players.PlayerRemoving:Connect(function(p)
         if self.IsTracking and self._currentTarget == p then
             setStatus("Target left.", Color3.fromRGB(255, 80, 80))
             self:StopTracking()
         end
     end)
+    
+    -- Safety clean up hook if local avatar dies/resets
+    LocalPlayer.CharacterRemoving:Connect(function()
+        if self.IsTracking then
+            self:StopTracking()
+        end
+    end)
 end
 
+_G.Teleport = Teleport
 return Teleport
