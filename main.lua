@@ -192,24 +192,18 @@ local function renderFrame()
                         d.Text.Visible = false
                     end
 
-                    -- Box
-                    local topWorld    = head.Position + Vector3.new(0, head.Size.Y/2, 0)
-                    local lFoot       = character:FindFirstChild("LeftFoot")  or character:FindFirstChild("Left Leg")
-                    local rFoot       = character:FindFirstChild("RightFoot") or character:FindFirstChild("Right Leg")
-                    local bottomWorld = (lFoot and rFoot)
-                        and Vector3.new(root.Position.X, math.min(lFoot.Position.Y, rFoot.Position.Y)-1, root.Position.Z)
-                        or  root.Position - Vector3.new(0, 3, 0)
-
-                    local topSc,    topOn    = camera:WorldToViewportPoint(topWorld)
-                    local bottomSc, bottomOn = camera:WorldToViewportPoint(bottomWorld)
-
-                    local boxWidth, boxHeight, boxX, boxY
-
-                    if topOn and bottomOn and d.Box then
-                        boxHeight = math.abs(bottomSc.Y - topSc.Y)
-                        boxWidth  = boxHeight * 0.45
-                        boxX      = topSc.X - boxWidth / 2
-                        boxY      = topSc.Y
+                    -- Bounding Box Framework (Isolated from physical animation/state jitters)
+                    local rootSc, rootOn = camera:WorldToViewportPoint(root.Position)
+                    if rootOn and d.Box then
+                        -- Calculate standard bounding dimensions directly from the root coordinate plane
+                        local topSc = camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
+                        local bottomSc = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0))
+                        
+                        local boxHeight = math.abs(bottomSc.Y - topSc.Y)
+                        local boxWidth  = boxHeight * 0.55
+                        local boxX      = rootSc.X - boxWidth / 2
+                        local boxY      = topSc.Y
+                        
                         if ESP.Boxes then
                             d.Box.Size     = Vector2.new(boxWidth, boxHeight)
                             d.Box.Position = Vector2.new(boxX, boxY)
@@ -217,58 +211,56 @@ local function renderFrame()
                         else
                             d.Box.Visible = false
                         end
-                    elseif d.Box then
-                        d.Box.Visible = false
-                    end
-
-                    -- Weapon / Backpack
-                    local gun, bag = ESP:GetPlayerEquipment(player)
-                    local yOff     = 4
-                    if bottomOn and boxHeight and ESP.WeaponText then
-                        if d.WeaponText then
-                            d.WeaponText.Position = Vector2.new(topSc.X, boxY + boxHeight + yOff)
-                            d.WeaponText.Text     = gun or "No Weapon"
-                            d.WeaponText.Visible  = true
-                            yOff = yOff + 12
+                        
+                        -- Health bar tracking placement
+                        if ESP.HealthBars and d.HealthBg and d.HealthFill then
+                            local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
+                            local barX  = boxX - 6
+                            
+                            d.HealthBg.Position = Vector2.new(barX - 1, boxY - 1)
+                            d.HealthBg.Size     = Vector2.new(5, boxHeight + 2)
+                            d.HealthBg.Visible  = true
+                            
+                            local fillH = boxHeight * ratio
+                            d.HealthFill.Position = Vector2.new(barX, boxY + (boxHeight - fillH))
+                            d.HealthFill.Size     = Vector2.new(3, fillH)
+                            d.HealthFill.Color    = Color3.fromRGB(math.floor(255 * (1 - ratio)), math.floor(255 * ratio), 0)
+                            d.HealthFill.Visible  = true
+                        else
+                            if d.HealthBg then d.HealthBg.Visible = false end
+                            if d.HealthFill then d.HealthFill.Visible = false end
                         end
-                        if bag and d.BackpackText then
-                            d.BackpackText.Position = Vector2.new(topSc.X, boxY + boxHeight + yOff)
-                            d.BackpackText.Text     = bag
-                            d.BackpackText.Visible  = true
-                        elseif d.BackpackText then
-                            d.BackpackText.Visible = false
+
+                        -- Weapon / Backpack Text placement
+                        local gun, bag = ESP:GetPlayerEquipment(player)
+                        local yOff     = 4
+                        if ESP.WeaponText then
+                            if d.WeaponText then
+                                d.WeaponText.Position = Vector2.new(rootSc.X, boxY + boxHeight + yOff)
+                                d.WeaponText.Text     = gun or "No Weapon"
+                                d.WeaponText.Visible  = true
+                                yOff = yOff + 12
+                            end
+                            if bag and d.BackpackText then
+                                d.BackpackText.Position = Vector2.new(rootSc.X, boxY + boxHeight + yOff)
+                                d.BackpackText.Text     = bag
+                                d.BackpackText.Visible  = true
+                            elseif d.BackpackText then
+                                d.BackpackText.Visible = false
+                            end
+                        else
+                            if d.WeaponText  then d.WeaponText.Visible  = false end
+                            if d.BackpackText then d.BackpackText.Visible = false end
                         end
                     else
-                        if d.WeaponText  then d.WeaponText.Visible  = false end
+                        if d.Box then d.Box.Visible = false end
+                        if d.HealthBg then d.HealthBg.Visible = false end
+                        if d.HealthFill then d.HealthFill.Visible = false end
+                        if d.WeaponText then d.WeaponText.Visible = false end
                         if d.BackpackText then d.BackpackText.Visible = false end
                     end
 
-                    -- Health bar
-                    if ESP.HealthBars and humanoid.MaxHealth > 0 and topOn and bottomOn and boxHeight then
-                        local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
-                        local barX  = boxX - 6
-                        if d.HealthBg then
-                            d.HealthBg.Position = Vector2.new(barX-1, boxY-1)
-                            d.HealthBg.Size     = Vector2.new(5, boxHeight+2)
-                            d.HealthBg.Visible  = true
-                        end
-                        if d.HealthFill then
-                            local fillH = boxHeight * ratio
-                            d.HealthFill.Position = Vector2.new(barX, boxY+(boxHeight-fillH))
-                            d.HealthFill.Size     = Vector2.new(3, fillH)
-                            d.HealthFill.Color    = Color3.fromRGB(
-                                math.floor(255*(1-ratio)),
-                                math.floor(255*ratio),
-                                0
-                            )
-                            d.HealthFill.Visible = true
-                        end
-                    else
-                        if d.HealthBg   then d.HealthBg.Visible   = false end
-                        if d.HealthFill then d.HealthFill.Visible  = false end
-                    end
-
-                    -- Skeleton
+                    -- Skeleton Rendering
                     if ESP.Skeleton then
                         local validBones = {}
                         for _, pair in ipairs(SKELETON_BONES) do
@@ -605,17 +597,17 @@ Tab1:CreateToggle({
 Tab1:CreateToggle({
     Name         = "Chams",
     CurrentValue = false,
-    Callback     = function(v) ESP:SetChams(v) end,
+    Callback     = function(v) ESP:SetChams(v) end
 })
 Tab1:CreateToggle({
     Name         = "Health Bars",
     CurrentValue = false,
-    Callback     = function(v) ESP.HealthBars = v end,
+    Callback     = function(v) ESP.HealthBars = v end
 })
 Tab1:CreateToggle({
     Name         = "Skeleton",
     CurrentValue = false,
-    Callback     = function(v) ESP:SetSkeleton(v) end,
+    Callback     = function(v) ESP:SetSkeleton(v) end
 })
 Tab1:CreateInput({
     Name                     = "Max Distance (m)",
@@ -645,12 +637,17 @@ Tab2:CreateInput({
     Callback                 = function(t) TargetName = t end,
 })
 
-Tab2:CreateSlider({
-    Name         = "Behind Offset (studs)",
-    Min          = 5,
-    Max          = 30,
-    CurrentValue = Teleport.BehindOffset,
-    Callback     = function(v) Teleport.BehindOffset = v end,
+-- REMOVED SLIDER -> REPLACED WITH SECURE DISTANCE CONFIG TEXT BOX
+Tab2:CreateInput({
+    Name                     = "Behind Offset (studs)",
+    PlaceholderText          = "15",
+    RemoveTextAfterFocusLost = false,
+    Callback                 = function(t)
+        local n = tonumber(t)
+        if n then 
+            Teleport.BehindOffset = n 
+        end
+    end,
 })
 
 Tab2:CreateButton({
