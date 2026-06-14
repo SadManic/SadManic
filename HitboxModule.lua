@@ -1,5 +1,5 @@
 -- =============================================================================
--- MANIC EXECUTOR COMBAT UTILITY SUITE: HITBOX COMPLIANCE MODULE
+-- MANIC EXECUTOR COMBAT UTILITY SUITE: HITBOX COMPLIANCE MODULE (STRIPPED)
 -- =============================================================================
 local HitboxModule = {}
 
@@ -20,22 +20,10 @@ local CharactersFolder = Workspace:WaitForChild("Characters", 5)
 HitboxModule.Active = false
 HitboxModule.HeadScale = 10
 HitboxModule.HitboxSize = 10
-HitboxModule.ChamColor = Color3.fromRGB(255, 0, 80)
 
--- Core internal asset pipeline
+-- Core internal asset pipeline (STRICTLY PHYSICAL DATA CHANGES)
 local function applyExpansion(character)
-    -- 1. Apply Chams Visuals
-    if not character:FindFirstChild("VisualCham") then
-        local highlight = Instance.new("Highlight")
-        highlight.Name = "VisualCham"
-        highlight.FillColor = HitboxModule.ChamColor
-        highlight.OutlineColor = Color3.new(1, 1, 1)
-        highlight.FillTransparency = 0.5
-        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-        highlight.Parent = character
-    end
-
-    -- 2. Anti-Freeze Head Mesh Scaling
+    -- 1. Anti-Freeze Head Mesh Scaling
     local head = character:FindFirstChild("Head")
     if head and head:IsA("BasePart") then
         local mesh = head:FindFirstChildOfClass("SpecialMesh")
@@ -52,14 +40,12 @@ local function applyExpansion(character)
         head.CanCollide = false
     end
 
-    -- 3. Spoofed Physical Hitbox Expansion
+    -- 2. Spoofed Physical Hitbox Expansion (Invisible)
     local rootPart = character:FindFirstChild("HumanoidRootPart")
     if rootPart and rootPart:IsA("BasePart") then
         setreadonly(gameMetatable, false)
         rootPart.Size = Vector3.new(HitboxModule.HitboxSize, HitboxModule.HitboxSize, HitboxModule.HitboxSize)
-        rootPart.Transparency = 0.75
-        rootPart.Color = Color3.fromRGB(0, 255, 255) -- Cyan box indicator
-        rootPart.Material = Enum.Material.Neon
+        rootPart.Transparency = 1 -- Completely invisible to blend with vanilla visuals
         rootPart.CanCollide = false
         setreadonly(gameMetatable, true)
     end
@@ -105,7 +91,6 @@ function HitboxModule.Toggle(state)
         return
     end
 
-    -- Ensure advanced protection layers are bound securely
     assert(hookmetamethod, "CRITICAL ERROR: Environment missing hookmetamethod capabilities.")
     initMetatables()
 
