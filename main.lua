@@ -15,7 +15,6 @@ else
     warn("[ChrisM] Workspace CharactersFolder Absent — Activating Player Character Fallbacks.")
 end
 
--- Make the characters folder available globally for the external hitbox script
 _G.CharactersFolder = CharactersFolder
 
 -- =============================================================================
@@ -202,7 +201,6 @@ local function renderFrame()
             if onSc and dist > 0.1 and dist <= ESP.MaxDistance then
                 table.insert(sorted, { Player = player, Data = d, Distance = dist, Character = character, Humanoid = humanoid })
 
-                -- Dynamic Name Setup
                 local headPos, headOn = camera:WorldToViewportPoint(head.Position)
                 if headOn and ESP.Names and d.Text then
                     d.Text.Position = Vector2.new(headPos.X, headPos.Y - NAME_OFFSET_Y)
@@ -212,12 +210,10 @@ local function renderFrame()
                     d.Text.Visible = false
                 end
 
-                -- Structural Bounding Boxes
                 local rootSc, rootOn = camera:WorldToViewportPoint(root.Position)
                 if rootOn and d.Box then
                     local topSc = camera:WorldToViewportPoint(root.Position + Vector3.new(0, 3, 0))
                     local bottomSc = camera:WorldToViewportPoint(root.Position - Vector3.new(0, 3.5, 0))
-                    
                     local boxHeight = math.abs(bottomSc.Y - topSc.Y)
                     local boxWidth  = boxHeight * 0.55
                     local boxX      = rootSc.X - boxWidth / 2
@@ -231,15 +227,12 @@ local function renderFrame()
                         d.Box.Visible = false
                     end
                     
-                    -- Health Bars
                     if ESP.HealthBars and d.HealthBg and d.HealthFill then
                         local ratio = math.clamp(humanoid.Health / humanoid.MaxHealth, 0, 1)
                         local barX  = boxX - 6
-                        
                         d.HealthBg.Position = Vector2.new(barX - 1, boxY - 1)
                         d.HealthBg.Size     = Vector2.new(5, boxHeight + 2)
                         d.HealthBg.Visible  = true
-                        
                         local fillH = boxHeight * ratio
                         d.HealthFill.Position = Vector2.new(barX, boxY + (boxHeight - fillH))
                         d.HealthFill.Size     = Vector2.new(3, fillH)
@@ -250,7 +243,6 @@ local function renderFrame()
                         if d.HealthFill then d.HealthFill.Visible = false end
                     end
 
-                    -- Weapons / Equipment Labels
                     local eq = EquipmentCache[player]
                     local gun = eq and eq.Weapon or "No Weapon"
                     local bag = eq and eq.Backpack
@@ -275,14 +267,9 @@ local function renderFrame()
                         if d.BackpackText then d.BackpackText.Visible = false end
                     end
                 else
-                    if d.Box then d.Box.Visible = false end
-                    if d.HealthBg then d.HealthBg.Visible = false end
-                    if d.HealthFill then d.HealthFill.Visible = false end
-                    if d.WeaponText then d.WeaponText.Visible = false end
-                    if d.BackpackText then d.BackpackText.Visible = false end
+                    hideEntry(d)
                 end
 
-                -- Skeletons
                 if ESP.Skeleton then
                     local validBones = {}
                     for _, pair in ipairs(SKELETON_BONES) do
@@ -314,12 +301,10 @@ local function renderFrame()
         end
     end
 
-    -- Sorting & Dynamic Rendering Layer Pipeline (Z-Indexing)
     table.sort(sorted, function(a, b) return a.Distance < b.Distance end)
     for i, item in ipairs(sorted) do
         local d = item.Data
         local targetZIndex = 1000 - math.clamp(math.floor(item.Distance), 0, 900)
-        
         d.Text.ZIndex = targetZIndex
         d.Box.ZIndex = targetZIndex
         d.HealthBg.ZIndex = targetZIndex
@@ -408,18 +393,14 @@ local function safeCFrame(targetRoot, targetChar, myChar)
     local cf = targetRoot.CFrame
     local offset = math.max(5, math.abs(Teleport.BehindOffset))
     local ideal = (cf * CFrame.new(0, 0, offset)).Position
-
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = { myChar, targetChar, Workspace.CurrentCamera, Players }
     params.IgnoreWater = true
-
     local wallHit = Workspace:Raycast(cf.Position, ideal - cf.Position, params)
     local pos = wallHit and (wallHit.Position + wallHit.Normal * 2.5) or ideal
-
     local floorHit = Workspace:Raycast(pos + Vector3.new(0, 4, 0), Vector3.new(0, -12, 0), params)
     if floorHit then pos = Vector3.new(pos.X, floorHit.Position.Y + 3, pos.Z) end
-
     return CFrame.new(pos, pos + cf.LookVector)
 end
 
@@ -427,21 +408,16 @@ local function doTeleport()
     local targetPlayer = Teleport._currentTarget
     local targetChar = targetPlayer and getTeleportCharacterModel(targetPlayer)
     local myChar = getTeleportCharacterModel(LocalPlayer)
-    
     if not (targetPlayer and targetChar and myChar) then return end
-
     local myRoot = myChar:FindFirstChild("HumanoidRootPart")
     local myHuman = myChar:FindFirstChildOfClass("Humanoid")
     local tgtRoot = targetChar:FindFirstChild("HumanoidRootPart")
-
     if not (myRoot and myHuman and tgtRoot) then return end
     if myHuman.Health <= 0 then return end
-
     if myHuman:GetState() ~= Enum.HumanoidStateType.Physics then
         myHuman.PlatformStand = true
         myHuman:ChangeState(Enum.HumanoidStateType.Physics)
     end
-
     myRoot.CFrame = safeCFrame(tgtRoot, targetChar, myChar)
     myRoot.AssemblyLinearVelocity = Vector3.zero
     myRoot.AssemblyAngularVelocity = Vector3.zero
@@ -451,42 +427,32 @@ function Teleport:OnStatusChange(callback) onStatusChange = callback end
 
 function Teleport:Once(targetName, onDone)
     if self.IsTracking then self:StopTracking() end
-
     local target = findPlayer(targetName)
     local targetChar = target and getTeleportCharacterModel(target)
     local myChar = getTeleportCharacterModel(LocalPlayer)
-    
     if not target or not targetChar then
         setStatus("Player not found.", Color3.fromRGB(255, 80, 80))
         if onDone then onDone(false) end
         return
     end
-
     local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
     local myHuman = myChar and myChar:FindFirstChildOfClass("Humanoid")
     local tgtRoot = targetChar:FindFirstChild("HumanoidRootPart")
-
     if not (myRoot and myHuman and tgtRoot) then if onDone then onDone(false) end return end
-
     myRoot.Anchored = true
     myHuman.PlatformStand = true
     myHuman:ChangeState(Enum.HumanoidStateType.Physics)
-
     if LocalPlayer.RequestStreamAroundAsync then
         pcall(function() LocalPlayer:RequestStreamAroundAsync(tgtRoot.Position) end)
     end
-
     myRoot.CFrame = safeCFrame(tgtRoot, targetChar, myChar)
     myRoot.AssemblyLinearVelocity = Vector3.zero
     myRoot.AssemblyAngularVelocity = Vector3.zero
-
     RunService.Heartbeat:Wait()
     RunService.Heartbeat:Wait()
-
     myHuman.PlatformStand = false
     myHuman:ChangeState(Enum.HumanoidStateType.Running)
     myRoot.Anchored = false
-
     setStatus("Teleported to " .. target.Name .. ".", Color3.fromRGB(0, 200, 80))
     if onDone then onDone(true) end
 end
@@ -499,12 +465,10 @@ function Teleport:StartTracking(targetName, onSuccess, onFail)
         if onFail then onFail() end
         return
     end
-
     self._currentTarget = target
     self.IsTracking = true
     setStatus("Tracking " .. target.Name .. "...", Color3.fromRGB(0, 213, 255))
     if onSuccess then onSuccess(target) end
-
     local lastUpdate = 0
     trackingConnection = RunService.Heartbeat:Connect(function()
         if not self.IsTracking then return end
@@ -522,7 +486,6 @@ function Teleport:StopTracking()
     self.IsTracking = false
     self._currentTarget = nil
     if trackingConnection then trackingConnection:Disconnect(); trackingConnection = nil end
-
     local myChar = getTeleportCharacterModel(LocalPlayer)
     if myChar then
         local myRoot = myChar:FindFirstChild("HumanoidRootPart")
@@ -557,7 +520,7 @@ function Teleport:Init()
 end
 
 -- =============================================================================
--- INTERFACE LAYER ROUTING (RAYFIELD ALLOCATION DEFINITION)
+-- INTERFACE LAYER ROUTING
 -- =============================================================================
 _G.ESP = ESP
 _G.Teleport = Teleport
@@ -565,7 +528,6 @@ _G.Teleport = Teleport
 ESP:Init()
 Teleport:Init()
 
-print("[ChrisM] Compiling Rayfield UI Framework Components...")
 local rayfieldSrc = game:HttpGet('https://sirius.menu/rayfield')
 local rayfieldFn, rayfieldErr = loadstring(rayfieldSrc)
 if not rayfieldFn then error("[ChrisM] Rayfield Engine Compilation Aborted: " .. tostring(rayfieldErr)) end
@@ -582,9 +544,8 @@ local Window = Rayfield:CreateWindow({
     ConfigurationSaving    = { Enabled = false },
 })
 
--- ── TAB 1: VISUALIZATION INTERFACE ──────────────────────────────────────────
+-- ── TAB 1: VISUALIZATION INTERFACE
 local Tab1 = Window:CreateTab("👁 Player ESP", nil)
-
 Tab1:CreateToggle({ Name = "Enable ESP", CurrentValue = false, Callback = function(v) ESP:SetEnabled(v) end })
 Tab1:CreateToggle({ Name = "Boxes", CurrentValue = true, Callback = function(v) ESP.Boxes = v end })
 Tab1:CreateToggle({ Name = "Names", CurrentValue = true, Callback = function(v) ESP.Names = v end })
@@ -597,7 +558,7 @@ Tab1:CreateInput({
     Callback = function(t) local n = tonumber(t); if n then ESP.MaxDistance = n end end,
 })
 
--- ── TAB 2: POSITION MANIPULATION INTERFACE ─────────────────────────────────
+-- ── TAB 2: POSITION MANIPULATION INTERFACE
 local Tab2 = Window:CreateTab("🎯 Teleport & Targets", nil)
 local TargetName = ""
 local StatusLabel = Tab2:CreateLabel("Status: Idle")
@@ -634,47 +595,6 @@ Tab2:CreateButton({
     Callback = function()
         if not Teleport.IsTracking then setStatus("Not currently tracking", Color3.fromRGB(150,150,150)) return end
         Teleport:StopTracking()
-    end,
-})
-
--- ── TAB 3: COMBAT MANIPULATION INTERFACE (EXTERNAL ROUTED) ─────────────────
-local Tab3 = Window:CreateTab("⚔️ Combat Settings", nil)
-
-Tab3:CreateToggle({
-    Name = "Enable Ghost Hitboxes",
-    CurrentValue = false,
-    Callback = function(v)
-        if _G.Hitbox and _G.Hitbox.Toggle then
-            _G.Hitbox:Toggle(v)
-        else
-            Rayfield:Notify({
-                Title = "Module Missing",
-                Content = "Hitbox engine not running. Please execute your hitbox script first!",
-                Duration = 4,
-                Image = 4483362458
-            })
-        end
-    end
-})
-
-Tab3:CreateInput({
-    Name = "Hitbox Size (studs)",
-    PlaceholderText = "10",
-    RemoveTextAfterFocusLost = false,
-    Callback = function(t)
-        local n = tonumber(t)
-        if n then
-            if _G.Hitbox then
-                _G.Hitbox.HitboxSize = n
-                -- If hitboxes are actively expanded, hot-swap the properties immediately
-                if _G.Hitbox.Active and _G.Hitbox.Toggle then
-                    _G.Hitbox:Toggle(false)
-                    _G.Hitbox:Toggle(true)
-                end
-            else
-                warn("[ChrisM Hub] Delayed allocation: _G.Hitbox is unlinked.")
-            end
-        end
     end,
 })
 
