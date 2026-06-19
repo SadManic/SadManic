@@ -48,7 +48,7 @@ local SKELETON_BONES = {
     {"UpperTorso","LeftUpperArm"}, {"LeftUpperArm","LeftLowerArm"}, {"LeftLowerArm","LeftHand"},
     {"Torso","Right Arm"}, {"Torso","Left Arm"},
     {"LowerTorso","RightUpperLeg"}, {"RightUpperLeg","RightLowerLeg"}, {"RightLowerLeg","RightFoot"},
-    {"LowerTorso","LeftUpperLeg"}, {"LeftUpperLeg","LeftLowerLeg"}, {"LeftLowerLeg","LeftFoot"},
+    {"LowerTorso","LeftUpperLeg"}, {"LeftUpperLeg","LeftLowerLeg"}, {"LowerTorso","LeftFoot"},
     {"HumanoidRootPart","Right Leg"}, {"HumanoidRootPart","Left Leg"},
 }
 
@@ -151,7 +151,7 @@ local function createEntry(player)
         HealthBg     = newDrawing("Square", { Color = Color3.fromRGB(0,0,0), Thickness = 1, Filled = true, Visible = false }),
         HealthFill   = newDrawing("Square", { Color = Color3.fromRGB(0,255,80), Thickness = 1, Filled = true, Visible = false }),
         WeaponText   = newDrawing("Text",   { Color = Color3.fromRGB(255,200,0), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        BackpackText = newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPAREMIN, Visible = false }),
+        BackpackText = newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
         Cham         = nil,
         Bones        = {},
     }
@@ -186,7 +186,7 @@ local function hideEntry(d)
 end
 
 -- =============================================================================
--- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION
+-- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION (RMB ACTIVATED)
 -- =============================================================================
 local Aimbot = {
     Enabled = false,
@@ -204,18 +204,18 @@ FOVCircle.Filled = false
 FOVCircle.Transparency = 0.5
 FOVCircle.Visible = false
 
-local isLMBPressed = false
+local isRMBPressed = false
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end 
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isLMBPressed = true
+    if gameProcessed then return end -- Safe processing barrier inside menu elements
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isRMBPressed = true
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isLMBPressed = false
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isRMBPressed = false
     end
 end)
 
@@ -287,7 +287,8 @@ local function renderFrame()
         FOVCircle.Visible = Aimbot.Enabled
     end
 
-    if Aimbot.Enabled and isLMBPressed then
+    -- Swapped tracker conditional state hook to rely strictly on isRMBPressed
+    if Aimbot.Enabled and isRMBPressed then
         local target = getClosestPlayerToCrosshair()
         if target then
             local currentCFrame = camera.CFrame
