@@ -55,6 +55,9 @@ local ActiveESP = {}
 local EquipmentCache = {} 
 local CharacterConnections = {}
 
+-- Share table globally for external hook capability
+_G.ActiveESP = ActiveESP
+
 local function newDrawing(kind, props)
     local ok, d = pcall(function()
         local obj = Drawing.new(kind)
@@ -182,11 +185,87 @@ local function hideEntry(d)
     if d.Cham then d.Cham:Destroy(); d.Cham = nil end
 end
 
+-- =============================================================================
+-- NEW: OPTIMIZED SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION
+-- =============================================================================
+local Aimbot = {
+    Enabled = false,
+    TargetPart = "Head",
+    FOV = 120,
+    Smoothness = 1,
+}
+
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Color = Color3.fromRGB(255, 255, 255)
+FOVCircle.Thickness = 1
+FOVCircle.NumSides = 64
+FOVCircle.Filled = false
+FOVCircle.Transparency = 0.5
+FOVCircle.Visible = false
+
+local function getClosestPlayerToCrosshair()
+    local camera = Workspace.CurrentCamera
+    if not camera then return nil end
+
+    local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    local closestPlayer = nil
+    local shortestDistance = Aimbot.FOV
+
+    for player, d in pairs(ActiveESP) do
+        local character = ESP:GetTargetCharacterModel(player)
+        if character then
+            local targetPart = character:FindFirstChild(Aimbot.TargetPart)
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            local alive = humanoid and humanoid.Health > 0
+
+            if targetPart and alive then
+                local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+                if onScreen then
+                    local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
+                    if distanceToCenter < shortestDistance then
+                        shortestDistance = distanceToCenter
+                        closestPlayer = {
+                            Part = targetPart,
+                            ScreenPos = Vector2.new(screenPos.X, screenPos.Y)
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return closestPlayer
+end
+
+-- =============================================================================
+-- SYSTEM RENDER CORE INTERCEPTOR
+-- =============================================================================
 local function renderFrame()
     local camera = Workspace.CurrentCamera
     if not camera then return end
-    local sorted = {}
 
+    -- Interactive Aimbot Asset Realignment Checks
+    if FOVCircle then
+        FOVCircle.Radius = Aimbot.FOV
+        FOVCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+        FOVCircle.Visible = Aimbot.Enabled
+    end
+
+    if Aimbot.Enabled then
+        local target = getClosestPlayerToCrosshair()
+        if target then
+            local currentCFrame = camera.CFrame
+            if Aimbot.Smoothness == 1 then
+                -- Frame-Perfect Raw Overwrite: Fixes visual micro-stutters completely
+                camera.CFrame = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
+            else
+                -- Humanized Matrix Smooth Tracking Interpolation
+                local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
+                camera.CFrame = currentCFrame:Lerp(targetRotation, 1 / Aimbot.Smoothness)
+            end
+        end
+    end
+
+    local sorted = {}
     for player, d in pairs(ActiveESP) do
         local character = ESP:GetTargetCharacterModel(player)
         local root      = character and character:FindFirstChild("HumanoidRootPart")
@@ -520,10 +599,11 @@ function Teleport:Init()
 end
 
 -- =============================================================================
--- INTERFACE LAYER ROUTING
+-- INTERFACE LAYER ROUTING & UI LAYOUT INIT
 -- =============================================================================
 _G.ESP = ESP
 _G.Teleport = Teleport
+_G.Aimbot = Aimbot
 
 ESP:Init()
 Teleport:Init()
@@ -596,6 +676,22 @@ Tab2:CreateButton({
         if not Teleport.IsTracking then setStatus("Not currently tracking", Color3.fromRGB(150,150,150)) return end
         Teleport:StopTracking()
     end,
+})
+
+-- ── TAB 3: AUTOMATED TARGETING INTERFACE (NEW)
+local Tab3 = Window:CreateTab("⚙️ Aimbot System", nil)
+Tab3:CreateToggle({ Name = "Enable Aimbot Lock", CurrentValue = false, Callback = function(v) Aimbot.Enabled = v end })
+Tab3:CreateSlider({
+    Name = "Aimbot FOV Radius", Min = 30, Max = 400, CurrentValue = 120, Flag = "AimFOV",
+    Callback = function(v) Aimbot.FOV = v end,
+})
+Tab3:CreateSlider({
+    Name = "Tracking Smoothness", Min = 1, Max = 10, CurrentValue = 1, Flag = "AimSmooth",
+    Callback = function(v) Aimbot.Smoothness = v end,
+})
+Tab3:CreateDropdown({
+    Name = "Target Bone Alignment", Options = {"Head", "HumanoidRootPart", "UpperTorso"}, CurrentValue = "Head",
+    Callback = function(v) Aimbot.TargetPart = v end,
 })
 
 print("[ChrisM] Master Window Pipeline Complete.")
