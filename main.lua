@@ -186,7 +186,7 @@ local function hideEntry(d)
 end
 
 -- =============================================================================
--- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION (MOUSE TRANSITION CONFIGURED)
+-- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION
 -- =============================================================================
 local Aimbot = {
     Enabled = false,
@@ -290,14 +290,20 @@ local function renderFrame()
     if Aimbot.Enabled and isRMBPressed then
         local target = getClosestPlayerToCrosshair()
         if target then
-            local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+            local currentCFrame = camera.CFrame
             
-            -- HARDWARE SYNTAX TRANSITION: Intercepts delta frames via relative screen pixels
-            local deltaX = (target.ScreenPos.X - centerScreen.X) / Aimbot.Smoothness
-            local deltaY = (target.ScreenPos.Y - centerScreen.Y) / Aimbot.Smoothness
-            
-            -- native relative hardware movement injection bypasses AR2 shoulder-cam overrides perfectly
-            mousemoverel(deltaX, deltaY)
+            if Aimbot.Smoothness == 1 then
+                -- Frame-Perfect Angular Vector Isolation (Bypasses AR2 Over-The-Shoulder Camera Bounds)
+                local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
+                local x, y, z = targetRotation:ToOrientation()
+                camera.CFrame = CFrame.new(currentCFrame.Position) * CFrame.fromOrientation(x, y, z)
+            else
+                -- High-Performance Relative Pixel Input Smoothing (Third Person Damping Path)
+                local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+                local deltaX = (target.ScreenPos.X - centerScreen.X) / Aimbot.Smoothness
+                local deltaY = (target.ScreenPos.Y - centerScreen.Y) / Aimbot.Smoothness
+                mousemoverel(deltaX, deltaY)
+            end
         end
     end
 
@@ -697,6 +703,7 @@ Tab2:CreateButton({
     end,
 })
 
+local trackingToggle = false
 Tab2:CreateButton({
     Name = "🟢 Start Loop Tracking",
     Callback = function()
@@ -714,7 +721,7 @@ Tab2:CreateButton({
     end,
 })
 
--- ── TAB 3: AUTOMATED TARGETING INTERFACE (TEXT BOX TRANSITION COMPLETE)
+-- ── TAB 3: AUTOMATED TARGETING INTERFACE (INPUT BOX DESIGN INTERFACE)
 local Tab3 = Window:CreateTab("⚙️ Aimbot System", nil)
 Tab3:CreateToggle({ Name = "Enable Aimbot Lock", CurrentValue = false, Callback = function(v) Aimbot.Enabled = v end })
 Tab3:CreateToggle({ Name = "Wall Check (Visible Only)", CurrentValue = true, Callback = function(v) Aimbot.WallCheck = v end })
