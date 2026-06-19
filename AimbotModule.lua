@@ -1,5 +1,5 @@
 -- =============================================================================
--- AUTOMATED TARGETING ENGINE - ANGULAR OBJECT-SPACE MATRIX REWRITE
+-- MATRIX CORE AUTOMATED TARGETING ENGINE - PRERENDER INTERCEPT EDITION
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,8 +12,8 @@ local Aimbot = {
     WallCheck = true,
     TargetPart = "Head",
     FOV = 120,
-    Smoothness = 1,          -- 1 = Frame-perfect hard glue, higher = smooth humanized panning
-    PredictionFactor = 0.135 -- Compensates for projectile latency / target velocity
+    Smoothness = 1,          -- 1 = Instant frame-perfect lock, higher = humanized tracking
+    PredictionFactor = 0.135 -- Compensates for running velocity lag in AR2
 }
 
 local FOVCircle = Drawing.new("Circle")
@@ -115,19 +115,18 @@ local function processAimbotPipeline()
             local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
             local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
             
-            -- Apply look-ahead tracking calculation based on target run velocity
+            -- Predictive vector calculation mapping target travel direction
             local predictedPosition = targetPart.Position + (velocity * Aimbot.PredictionFactor)
             
-            -- Convert target position into camera local relative coordinates
+            -- Isolates relative position context to strip spatial positional corruption (stops floating)
             local localSpacePos = camera.CFrame:PointToObjectSpace(predictedPosition)
             
-            -- Derive clean Radians for Pitch and Yaw offsets
             local angleX = math.atan2(-localSpacePos.X, -localSpacePos.Z)
             local angleY = math.atan2(-localSpacePos.Y, -Vector2.new(localSpacePos.X, localSpacePos.Z).Magnitude)
             
             local smoothFactor = math.max(1, Aimbot.Smoothness)
             
-            -- Inject rotation transformations on the current matrix matrix thread context
+            -- Apply angular modifications directly onto current matrix thread sequence
             if smoothFactor == 1 then
                 camera.CFrame = camera.CFrame * CFrame.Angles(angleY, angleX, 0)
             else
@@ -137,8 +136,14 @@ local function processAimbotPipeline()
     end
 end
 
--- Bound directly to the end of the frame rendering timeline array context
-RunService:BindToRenderStep("AimbotPredictivePipeline", Enum.RenderPriority.Last.Value, processAimbotPipeline)
+-- Clear out any leftover legacy steps bound from previous script iterations
+pcall(function()
+    RunService:UnbindFromRenderStep("AimbotPredictivePipeline")
+    RunService:UnbindFromRenderStep("AimbotTargetingPipeline")
+end)
+
+-- Execute pipeline via PreRender connection loop to outpace game engine frame budgeting
+RunService.PreRender:Connect(processAimbotPipeline)
 
 _G.Aimbot = Aimbot
 return Aimbot
