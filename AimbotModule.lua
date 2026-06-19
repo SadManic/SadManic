@@ -1,9 +1,10 @@
 -- =============================================================================
--- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE
+-- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (LMB ACTIVATED)
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 local Aimbot = {
@@ -22,7 +23,23 @@ FOVCircle.Filled = false
 FOVCircle.Transparency = 0.5
 FOVCircle.Visible = false
 
--- Grabs the player model hook directly from your existing global folder configuration
+local isLMBPressed = false
+
+-- Hardware input listeners for the mouse hold state
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end -- Don't lock on if typing in chat/menus
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isLMBPressed = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isLMBPressed = false
+    end
+end)
+
+-- Grabs the player model hook directly from your global folder configuration
 local function getTargetCharacterModel(player)
     local charsFolder = _G.CharactersFolder
     if charsFolder then
@@ -41,7 +58,7 @@ local function getClosestPlayerToCrosshair()
     local closestPlayer = nil
     local shortestDistance = Aimbot.FOV
 
-    -- Loops through the shared global ESP tracking table
+    -- Loops through your shared global ESP tracking table
     local activeTable = _G.ActiveESP or {} 
     for player, _ in pairs(activeTable) do
         local character = getTargetCharacterModel(player)
@@ -73,24 +90,24 @@ local function processAimbotPipeline()
     local camera = Workspace.CurrentCamera
     if not camera then return end
     
-    -- Dynamic FOV Realignment Check
+    -- Keep visual FOV circle centered and size-matched
     if FOVCircle then
         FOVCircle.Radius = Aimbot.FOV
         FOVCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
         FOVCircle.Visible = Aimbot.Enabled
     end
 
-    -- Execution calculations
-    if Aimbot.Enabled then
+    -- Run target locking only if enabled in menu AND holding LMB
+    if Aimbot.Enabled and isLMBPressed then
         local target = getClosestPlayerToCrosshair()
         if target then
             local currentCFrame = camera.CFrame
             
             if Aimbot.Smoothness == 1 then
-                -- Frame-Perfect Hard Snap: Deletes matrix interpolation overhead entirely
+                -- Frame-Perfect Hard Snap
                 camera.CFrame = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
             else
-                -- Humanized Smooth Tracking: Standard linear angle interpolation
+                -- Smooth Humanized Lerp Tracking
                 local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
                 camera.CFrame = currentCFrame:Lerp(targetRotation, 1 / Aimbot.Smoothness)
             end
@@ -98,10 +115,8 @@ local function processAimbotPipeline()
     end
 end
 
-function Aimbot:Init()
-    -- Latency-free camera connection bypass loop execution
-    RunService:BindToRenderStep("AimbotTargetingPipeline", Enum.RenderPriority.Camera.Value + 1, processAimbotPipeline)
-end
+-- Instantiate loop
+RunService:BindToRenderStep("AimbotTargetingPipeline", Enum.RenderPriority.Camera.Value + 1, processAimbotPipeline)
 
 _G.Aimbot = Aimbot
 return Aimbot
