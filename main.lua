@@ -151,7 +151,7 @@ local function createEntry(player)
         HealthBg     = newDrawing("Square", { Color = Color3.fromRGB(0,0,0), Thickness = 1, Filled = true, Visible = false }),
         HealthFill   = newDrawing("Square", { Color = Color3.fromRGB(0,255,80), Thickness = 1, Filled = true, Visible = false }),
         WeaponText   = newDrawing("Text",   { Color = Color3.fromRGB(255,200,0), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
-        BackpackText = newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPARENCY, Visible = false }),
+        BackpackText = newDrawing("Text",   { Color = Color3.fromRGB(0,180,255), Size = 10, Center = true, Outline = true, Transparency = NAME_TRANSPAREMIN, Visible = false }),
         Cham         = nil,
         Bones        = {},
     }
@@ -186,7 +186,7 @@ local function hideEntry(d)
 end
 
 -- =============================================================================
--- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION (WALLCHECK HOOKED)
+-- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION
 -- =============================================================================
 local Aimbot = {
     Enabled = false,
@@ -206,7 +206,6 @@ FOVCircle.Visible = false
 
 local isLMBPressed = false
 
--- Hardware input listeners for the mouse hold state
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end 
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -220,7 +219,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Checks if a clear line of sight exists between your camera and the target's bone
 local function isVisible(camera, targetPart, targetCharacter)
     local myCharacter = ESP:GetTargetCharacterModel(LocalPlayer)
     if not myCharacter then return false end
@@ -259,7 +257,6 @@ local function getClosestPlayerToCrosshair()
                     local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
                     if distanceToCenter < shortestDistance then
                         
-                        -- Process raycast cover validation checks
                         if Aimbot.WallCheck and not isVisible(camera, targetPart, character) then
                             continue
                         end
@@ -716,21 +713,27 @@ Tab2:CreateButton({
     end,
 })
 
--- ── TAB 3: AUTOMATED TARGETING INTERFACE (WITH WALL CHECK OPTION ADDED)
+-- ── TAB 3: AUTOMATED TARGETING INTERFACE (CRASH PROTECTED)
 local Tab3 = Window:CreateTab("⚙️ Aimbot System", nil)
 Tab3:CreateToggle({ Name = "Enable Aimbot Lock", CurrentValue = false, Callback = function(v) Aimbot.Enabled = v end })
 Tab3:CreateToggle({ Name = "Wall Check (Visible Only)", CurrentValue = true, Callback = function(v) Aimbot.WallCheck = v end })
 Tab3:CreateSlider({
-    Name = "Aimbot FOV Radius", Min = 30, Max = 400, CurrentValue = 120, Flag = "AimFOV",
+    Name = "Aimbot FOV Radius", Min = 30, Max = 400, CurrentValue = 120, Increment = 1, ValueName = "Pixels", Flag = "AimFOV",
     Callback = function(v) Aimbot.FOV = v end,
 })
 Tab3:CreateSlider({
-    Name = "Tracking Smoothness", Min = 1, Max = 10, CurrentValue = 1, Flag = "AimSmooth",
+    Name = "Tracking Smoothness", Min = 1, Max = 10, CurrentValue = 1, Increment = 1, ValueName = "Smooth", Flag = "AimSmooth",
     Callback = function(v) Aimbot.Smoothness = v end,
 })
 Tab3:CreateDropdown({
-    Name = "Target Bone Alignment", Options = {"Head", "HumanoidRootPart", "UpperTorso"}, CurrentValue = "Head",
-    Callback = function(v) Aimbot.TargetPart = v end,
+    Name = "Target Bone Alignment", Options = {"Head", "HumanoidRootPart", "UpperTorso"}, CurrentValue = {"Head"},
+    Callback = function(v) 
+        if type(v) == "table" then
+            Aimbot.TargetPart = v[1]
+        else
+            Aimbot.TargetPart = v 
+        end
+    end,
 })
 
 print("[ChrisM] Master Window Pipeline Complete.")
