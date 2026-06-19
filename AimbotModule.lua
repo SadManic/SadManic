@@ -1,5 +1,5 @@
 -- =============================================================================
--- AUTOMATED TARGETING ENGINE - HIGH PRIOR_TIY PREDICTION REWRITE
+-- AUTOMATED TARGETING ENGINE - ANGULAR OBJECT-SPACE MATRIX REWRITE
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,8 +12,8 @@ local Aimbot = {
     WallCheck = true,
     TargetPart = "Head",
     FOV = 120,
-    Smoothness = 1, -- 1 is now a true frame-perfect snap
-    PredictionFactor = 0.135 -- Adjust this slightly if it overshoots/undershoots running targets
+    Smoothness = 1,          -- 1 = Frame-perfect hard glue, higher = smooth humanized panning
+    PredictionFactor = 0.135 -- Compensates for projectile latency / target velocity
 }
 
 local FOVCircle = Drawing.new("Circle")
@@ -112,33 +112,32 @@ local function processAimbotPipeline()
     if Aimbot.Enabled and isRMBPressed then
         local targetPart, targetChar = getClosestPlayerToCrosshair()
         if targetPart and targetChar then
-            
-            -- Get target's movement speed/velocity
             local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
             local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
             
-            -- Predict future position based on travel speed
+            -- Apply look-ahead tracking calculation based on target run velocity
             local predictedPosition = targetPart.Position + (velocity * Aimbot.PredictionFactor)
             
-            local screenPos, onScreen = camera:WorldToViewportPoint(predictedPosition)
-            if onScreen then
-                local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-                
-                local deltaX = screenPos.X - centerScreen.X
-                local deltaY = screenPos.Y - centerScreen.Y
-                
-                local smoothFactor = math.max(1, Aimbot.Smoothness)
-                
-                if mousemoverel then
-                    -- If smoothness is 1, it passes raw delta for instantaneous snap
-                    mousemoverel(deltaX / smoothFactor, deltaY / smoothFactor)
-                end
+            -- Convert target position into camera local relative coordinates
+            local localSpacePos = camera.CFrame:PointToObjectSpace(predictedPosition)
+            
+            -- Derive clean Radians for Pitch and Yaw offsets
+            local angleX = math.atan2(-localSpacePos.X, -localSpacePos.Z)
+            local angleY = math.atan2(-localSpacePos.Y, -Vector2.new(localSpacePos.X, localSpacePos.Z).Magnitude)
+            
+            local smoothFactor = math.max(1, Aimbot.Smoothness)
+            
+            -- Inject rotation transformations on the current matrix matrix thread context
+            if smoothFactor == 1 then
+                camera.CFrame = camera.CFrame * CFrame.Angles(angleY, angleX, 0)
+            else
+                camera.CFrame = camera.CFrame:Lerp(camera.CFrame * CFrame.Angles(angleY, angleX, 0), 1 / smoothFactor)
             end
         end
     end
 end
 
--- Bound to Render priority to execute right before frame layout compilation
+-- Bound directly to the end of the frame rendering timeline array context
 RunService:BindToRenderStep("AimbotPredictivePipeline", Enum.RenderPriority.Last.Value, processAimbotPipeline)
 
 _G.Aimbot = Aimbot
