@@ -1,5 +1,5 @@
 -- =============================================================================
--- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (THIRD-PERSON COMPATIBLE)
+-- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (INPUT EMULATION FIXED)
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,7 +12,7 @@ local Aimbot = {
     WallCheck = true,      -- Filter targets behind solid walls/cover
     TargetPart = "Head",   -- Options: "Head", "HumanoidRootPart", "UpperTorso"
     FOV = 120,             -- Radius in pixels
-    Smoothness = 1,        -- 1 = Instant frame snap, higher = humanized lerp
+    Smoothness = 2,        -- 1 = Instant snap, higher values = smoother tracking (Keep >= 1)
 }
 
 -- Create interactive drawing asset
@@ -28,7 +28,7 @@ local isRMBPressed = false
 
 -- Hardware input listeners mapped to Right Click (Aim Down Sights)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end -- Safe processing barrier inside menu elements
+    if gameProcessed then return end 
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         isRMBPressed = true
     end
@@ -123,17 +123,23 @@ local function processAimbotPipeline()
     if Aimbot.Enabled and isRMBPressed then
         local targetPart = getClosestPlayerToCrosshair()
         if targetPart then
-            local currentCFrame = camera.CFrame
-            
-            -- Isolates the lookAt orientation vectors based directly on current frame context locations
-            local lookAtCFrame = CFrame.lookAt(currentCFrame.Position, targetPart.Position)
-            
-            if Aimbot.Smoothness == 1 then
-                -- Frame-Perfect Hard Snap: Direct CFrame transition that preserves AR2 third person anchors
-                camera.CFrame = lookAtCFrame
-            else
-                -- Humanized Smooth Vector Tracking
-                camera.CFrame = currentCFrame:Lerp(lookAtCFrame, 1 / Aimbot.Smoothness)
+            local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+            if onScreen then
+                local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+                
+                -- Calculate screen space distance relative to your crosshair
+                local deltaX = screenPos.X - centerScreen.X
+                local deltaY = screenPos.Y - centerScreen.Y
+                
+                -- Dynamic smoothing adjustment factor
+                local smoothFactor = math.max(1, Aimbot.Smoothness)
+                
+                -- Move the hardware cursor natively via executor context environment
+                if mousemoverel then
+                    mousemoverel(deltaX / smoothFactor, deltaY / smoothFactor)
+                else
+                    warn("[Aimbot] Missing 'mousemoverel' execution closure required for input emulation.")
+                end
             end
         end
     end
