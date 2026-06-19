@@ -1,5 +1,5 @@
 -- =============================================================================
--- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (LMB ACTIVATED)
+-- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (LMB & WALLCHECK INTEGRATED)
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,6 +9,7 @@ local LocalPlayer = Players.LocalPlayer
 
 local Aimbot = {
     Enabled = false,
+    WallCheck = true,      -- Filter targets behind solid walls/cover
     TargetPart = "Head",   -- Options: "Head", "HumanoidRootPart", "UpperTorso"
     FOV = 120,             -- Radius in pixels
     Smoothness = 1,        -- 1 = Instant frame snap, higher = humanized lerp
@@ -49,6 +50,27 @@ local function getTargetCharacterModel(player)
     return player.Character
 end
 
+-- Checks if a clear line of sight exists between your camera and the target's bone
+local function isVisible(camera, targetPart, targetCharacter)
+    local myCharacter = getTargetCharacterModel(LocalPlayer)
+    if not myCharacter then return false end
+
+    local origin = camera.CFrame.Position
+    local destination = targetPart.Position
+    local direction = destination - origin
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    -- Ignore yourself, the target you are checking, the active camera viewport, and other players
+    params.FilterDescendantsInstances = { myCharacter, targetCharacter, camera, Players }
+    params.IgnoreWater = true
+
+    local raycastResult = Workspace:Raycast(origin, direction, params)
+    
+    -- If raycastResult is nil, nothing blocked the line of sight
+    return raycastResult == nil
+end
+
 -- Scan method utilizing your existing ActiveESP layout table to eliminate overhead
 local function getClosestPlayerToCrosshair()
     local camera = Workspace.CurrentCamera
@@ -72,6 +94,12 @@ local function getClosestPlayerToCrosshair()
                 if onScreen then
                     local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
                     if distanceToCenter < shortestDistance then
+                        
+                        -- Process raycast geometry intercept checks if WallCheck option is turned on
+                        if Aimbot.WallCheck and not isVisible(camera, targetPart, character) then
+                            continue -- Skip this player entirely, they're behind a wall
+                        end
+
                         shortestDistance = distanceToCenter
                         closestPlayer = {
                             Part = targetPart,
