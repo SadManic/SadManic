@@ -4,6 +4,7 @@
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local Workspace  = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 
 print("[ChrisM] Initialising Master Subsystems...")
@@ -55,7 +56,6 @@ local ActiveESP = {}
 local EquipmentCache = {} 
 local CharacterConnections = {}
 
--- Share table globally for external hook capability
 _G.ActiveESP = ActiveESP
 
 local function newDrawing(kind, props)
@@ -186,10 +186,11 @@ local function hideEntry(d)
 end
 
 -- =============================================================================
--- NEW: OPTIMIZED SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION
+-- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION (WALLCHECK HOOKED)
 -- =============================================================================
 local Aimbot = {
     Enabled = false,
+    WallCheck = true,
     TargetPart = "Head",
     FOV = 120,
     Smoothness = 1,
@@ -202,6 +203,40 @@ FOVCircle.NumSides = 64
 FOVCircle.Filled = false
 FOVCircle.Transparency = 0.5
 FOVCircle.Visible = false
+
+local isLMBPressed = false
+
+-- Hardware input listeners for the mouse hold state
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end 
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isLMBPressed = true
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        isLMBPressed = false
+    end
+end)
+
+-- Checks if a clear line of sight exists between your camera and the target's bone
+local function isVisible(camera, targetPart, targetCharacter)
+    local myCharacter = ESP:GetTargetCharacterModel(LocalPlayer)
+    if not myCharacter then return false end
+
+    local origin = camera.CFrame.Position
+    local destination = targetPart.Position
+    local direction = destination - origin
+
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { myCharacter, targetCharacter, camera, Players }
+    params.IgnoreWater = true
+
+    local raycastResult = Workspace:Raycast(origin, direction, params)
+    return raycastResult == nil
+end
 
 local function getClosestPlayerToCrosshair()
     local camera = Workspace.CurrentCamera
@@ -223,6 +258,12 @@ local function getClosestPlayerToCrosshair()
                 if onScreen then
                     local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
                     if distanceToCenter < shortestDistance then
+                        
+                        -- Process raycast cover validation checks
+                        if Aimbot.WallCheck and not isVisible(camera, targetPart, character) then
+                            continue
+                        end
+
                         shortestDistance = distanceToCenter
                         closestPlayer = {
                             Part = targetPart,
@@ -243,22 +284,19 @@ local function renderFrame()
     local camera = Workspace.CurrentCamera
     if not camera then return end
 
-    -- Interactive Aimbot Asset Realignment Checks
     if FOVCircle then
         FOVCircle.Radius = Aimbot.FOV
         FOVCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
         FOVCircle.Visible = Aimbot.Enabled
     end
 
-    if Aimbot.Enabled then
+    if Aimbot.Enabled and isLMBPressed then
         local target = getClosestPlayerToCrosshair()
         if target then
             local currentCFrame = camera.CFrame
             if Aimbot.Smoothness == 1 then
-                -- Frame-Perfect Raw Overwrite: Fixes visual micro-stutters completely
                 camera.CFrame = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
             else
-                -- Humanized Matrix Smooth Tracking Interpolation
                 local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
                 camera.CFrame = currentCFrame:Lerp(targetRotation, 1 / Aimbot.Smoothness)
             end
@@ -678,9 +716,10 @@ Tab2:CreateButton({
     end,
 })
 
--- ── TAB 3: AUTOMATED TARGETING INTERFACE (NEW)
+-- ── TAB 3: AUTOMATED TARGETING INTERFACE (WITH WALL CHECK OPTION ADDED)
 local Tab3 = Window:CreateTab("⚙️ Aimbot System", nil)
 Tab3:CreateToggle({ Name = "Enable Aimbot Lock", CurrentValue = false, Callback = function(v) Aimbot.Enabled = v end })
+Tab3:CreateToggle({ Name = "Wall Check (Visible Only)", CurrentValue = true, Callback = function(v) Aimbot.WallCheck = v end })
 Tab3:CreateSlider({
     Name = "Aimbot FOV Radius", Min = 30, Max = 400, CurrentValue = 120, Flag = "AimFOV",
     Callback = function(v) Aimbot.FOV = v end,
