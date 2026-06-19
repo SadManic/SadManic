@@ -19,7 +19,7 @@ end
 _G.CharactersFolder = CharactersFolder
 
 -- =============================================================================
--- SYSTEM 2: EVENT-CACHED 2D RENDERING ENGINE & CHAMS ESP
+-- SYSTEM 1: EVENT-CACHED 2D RENDERING ENGINE & CHAMS ESP
 -- =============================================================================
 local ESP = {
     Enabled = false,
@@ -186,14 +186,14 @@ local function hideEntry(d)
 end
 
 -- =============================================================================
--- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION
+-- SYSTEM 2: AUTOMATED TARGETING & INPUT EMULATION ENGINE
 -- =============================================================================
 local Aimbot = {
     Enabled = false,
     WallCheck = true,
     TargetPart = "Head",
     FOV = 120,
-    Smoothness = 1,
+    Smoothness = 2, -- Recommended >= 2 for smooth mouse emulation tracking
 }
 
 local FOVCircle = Drawing.new("Circle")
@@ -271,13 +271,11 @@ local function getClosestPlayerToCrosshair()
     return closestPlayer
 end
 
--- =============================================================================
--- SYSTEM RENDER CORE INTERCEPTOR
--- =============================================================================
-local function renderFrame()
+-- Dedicated Pipeline Loop for Handling Aimbot
+local function processAimbotPipeline()
     local camera = Workspace.CurrentCamera
     if not camera then return end
-
+    
     if FOVCircle then
         FOVCircle.Radius = Aimbot.FOV
         FOVCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
@@ -287,16 +285,31 @@ local function renderFrame()
     if Aimbot.Enabled and isRMBPressed then
         local targetPart = getClosestPlayerToCrosshair()
         if targetPart then
-            local currentCFrame = camera.CFrame
-            local lookAtCFrame = CFrame.lookAt(currentCFrame.Position, targetPart.Position)
-            
-            if Aimbot.Smoothness == 1 then
-                camera.CFrame = lookAtCFrame
-            else
-                camera.CFrame = currentCFrame:Lerp(lookAtCFrame, 1 / Aimbot.Smoothness)
+            local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+            if onScreen then
+                local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+                
+                local deltaX = screenPos.X - centerScreen.X
+                local deltaY = screenPos.Y - centerScreen.Y
+                
+                local smoothFactor = math.max(1, Aimbot.Smoothness)
+                
+                if mousemoverel then
+                    mousemoverel(deltaX / smoothFactor, deltaY / smoothFactor)
+                else
+                    warn("[ChrisM Hub] Executor missing required 'mousemoverel' closure function.")
+                end
             end
         end
     end
+end
+
+-- =============================================================================
+-- SYSTEM RENDER CORE INTERCEPTOR (ESP ONLY)
+-- =============================================================================
+local function renderFrame()
+    local camera = Workspace.CurrentCamera
+    if not camera then return end
 
     local sorted = {}
     for player, d in pairs(ActiveESP) do
@@ -640,6 +653,7 @@ _G.Aimbot = Aimbot
 
 ESP:Init()
 Teleport:Init()
+RunService:BindToRenderStep("AimbotTargetingPipeline", Enum.RenderPriority.Camera.Value + 1, processAimbotPipeline)
 
 local rayfieldSrc = game:HttpGet('https://sirius.menu/rayfield')
 local rayfieldFn, rayfieldErr = loadstring(rayfieldSrc)
@@ -722,7 +736,7 @@ Tab3:CreateInput({
 })
 
 Tab3:CreateInput({
-    Name = "Tracking Smoothness", PlaceholderText = "1", RemoveTextAfterFocusLost = false,
+    Name = "Tracking Smoothness", PlaceholderText = "2", RemoveTextAfterFocusLost = false,
     Callback = function(t) local n = tonumber(t); if n then Aimbot.Smoothness = math.max(1, n) end end,
 })
 
