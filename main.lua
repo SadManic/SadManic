@@ -262,10 +262,7 @@ local function getClosestPlayerToCrosshair()
                         end
 
                         shortestDistance = distanceToCenter
-                        closestPlayer = {
-                            Part = targetPart,
-                            ScreenPos = Vector2.new(screenPos.X, screenPos.Y)
-                        }
+                        closestPlayer = targetPart
                     end
                 end
             end
@@ -288,21 +285,15 @@ local function renderFrame()
     end
 
     if Aimbot.Enabled and isRMBPressed then
-        local target = getClosestPlayerToCrosshair()
-        if target then
+        local targetPart = getClosestPlayerToCrosshair()
+        if targetPart then
             local currentCFrame = camera.CFrame
+            local lookAtCFrame = CFrame.lookAt(currentCFrame.Position, targetPart.Position)
             
             if Aimbot.Smoothness == 1 then
-                -- Frame-Perfect Angular Vector Isolation (Bypasses AR2 Over-The-Shoulder Camera Bounds)
-                local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
-                local x, y, z = targetRotation:ToOrientation()
-                camera.CFrame = CFrame.new(currentCFrame.Position) * CFrame.fromOrientation(x, y, z)
+                camera.CFrame = lookAtCFrame
             else
-                -- High-Performance Relative Pixel Input Smoothing (Third Person Damping Path)
-                local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-                local deltaX = (target.ScreenPos.X - centerScreen.X) / Aimbot.Smoothness
-                local deltaY = (target.ScreenPos.Y - centerScreen.Y) / Aimbot.Smoothness
-                mousemoverel(deltaX, deltaY)
+                camera.CFrame = currentCFrame:Lerp(lookAtCFrame, 1 / Aimbot.Smoothness)
             end
         end
     end
@@ -703,7 +694,6 @@ Tab2:CreateButton({
     end,
 })
 
-local trackingToggle = false
 Tab2:CreateButton({
     Name = "🟢 Start Loop Tracking",
     Callback = function()
@@ -721,7 +711,7 @@ Tab2:CreateButton({
     end,
 })
 
--- ── TAB 3: AUTOMATED TARGETING INTERFACE (INPUT BOX DESIGN INTERFACE)
+-- ── TAB 3: AUTOMATED TARGETING INTERFACE
 local Tab3 = Window:CreateTab("⚙️ Aimbot System", nil)
 Tab3:CreateToggle({ Name = "Enable Aimbot Lock", CurrentValue = false, Callback = function(v) Aimbot.Enabled = v end })
 Tab3:CreateToggle({ Name = "Wall Check (Visible Only)", CurrentValue = true, Callback = function(v) Aimbot.WallCheck = v end })
@@ -747,4 +737,8 @@ Tab3:CreateDropdown({
     end,
 })
 
-print("[ChrisM] Master Window Pipeline Complete.")
+return {
+    ESP = ESP,
+    Teleport = Teleport,
+    Aimbot = Aimbot
+}
