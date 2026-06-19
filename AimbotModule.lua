@@ -1,5 +1,5 @@
 -- =============================================================================
--- MATRIX CORE AUTOMATED TARGETING ENGINE - PRERENDER INTERCEPT EDITION
+-- AUTOMATED TARGETING ENGINE - HIGH-VELOCITY FLICK & SNAP EDITION
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -12,8 +12,8 @@ local Aimbot = {
     WallCheck = true,
     TargetPart = "Head",
     FOV = 120,
-    Smoothness = 1,          -- 1 = Instant frame-perfect lock, higher = humanized tracking
-    PredictionFactor = 0.135 -- Compensates for running velocity lag in AR2
+    Smoothness = 1,          -- 1 = Instant frame-perfect hard snap/flick
+    PredictionFactor = 0.115 -- Fine-tuned prediction for AR2 physics synchronization
 }
 
 local FOVCircle = Drawing.new("Circle")
@@ -115,34 +115,40 @@ local function processAimbotPipeline()
             local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
             local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
             
-            -- Predictive vector calculation mapping target travel direction
-            local predictedPosition = targetPart.Position + (velocity * Aimbot.PredictionFactor)
+            -- Calculate distance to target to dynamically optimize prediction vectors
+            local targetDistance = (camera.CFrame.Position - targetPart.Position).Magnitude
+            local dynamicPrediction = Aimbot.PredictionFactor
             
-            -- Isolates relative position context to strip spatial positional corruption (stops floating)
+            -- If target is close, drop prediction factor to maximize aggressive structural snapping
+            if targetDistance < 60 then
+                dynamicPrediction = dynamicPrediction * 0.4
+            end
+            
+            local predictedPosition = targetPart.Position + (velocity * dynamicPrediction)
+            
+            -- Translate destination point into absolute Camera object space matrix
             local localSpacePos = camera.CFrame:PointToObjectSpace(predictedPosition)
             
             local angleX = math.atan2(-localSpacePos.X, -localSpacePos.Z)
             local angleY = math.atan2(-localSpacePos.Y, -Vector2.new(localSpacePos.X, localSpacePos.Z).Magnitude)
             
-            local smoothFactor = math.max(1, Aimbot.Smoothness)
-            
-            -- Apply angular modifications directly onto current matrix thread sequence
-            if smoothFactor == 1 then
+            -- Hard-bypass Lerp operations if Smoothness is set to 1 for an instant, aggressive flick
+            if Aimbot.Smoothness <= 1 then
                 camera.CFrame = camera.CFrame * CFrame.Angles(angleY, angleX, 0)
             else
-                camera.CFrame = camera.CFrame:Lerp(camera.CFrame * CFrame.Angles(angleY, angleX, 0), 1 / smoothFactor)
+                camera.CFrame = camera.CFrame:Lerp(camera.CFrame * CFrame.Angles(angleY, angleX, 0), 1 / Aimbot.Smoothness)
             end
         end
     end
 end
 
--- Clear out any leftover legacy steps bound from previous script iterations
+-- Force-flush old legacy connections hanging on the render thread list
 pcall(function()
     RunService:UnbindFromRenderStep("AimbotPredictivePipeline")
     RunService:UnbindFromRenderStep("AimbotTargetingPipeline")
 end)
 
--- Execute pipeline via PreRender connection loop to outpace game engine frame budgeting
+-- Execute on PreRender frame loop setup for zero-delay hardware tracking
 RunService.PreRender:Connect(processAimbotPipeline)
 
 _G.Aimbot = Aimbot
