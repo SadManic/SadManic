@@ -1,5 +1,5 @@
 -- =============================================================================
--- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (LMB & WALLCHECK INTEGRATED)
+-- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (THIRD-PERSON COMPATIBLE)
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -24,19 +24,19 @@ FOVCircle.Filled = false
 FOVCircle.Transparency = 0.5
 FOVCircle.Visible = false
 
-local isLMBPressed = false
+local isRMBPressed = false
 
--- Hardware input listeners for the mouse hold state
+-- Hardware input listeners mapped to Right Click (Aim Down Sights)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end -- Don't lock on if typing in chat/menus
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isLMBPressed = true
+    if gameProcessed then return end -- Safe processing barrier inside menu elements
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isRMBPressed = true
     end
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        isLMBPressed = false
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isRMBPressed = false
     end
 end)
 
@@ -61,13 +61,10 @@ local function isVisible(camera, targetPart, targetCharacter)
 
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    -- Ignore yourself, the target you are checking, the active camera viewport, and other players
     params.FilterDescendantsInstances = { myCharacter, targetCharacter, camera, Players }
     params.IgnoreWater = true
 
     local raycastResult = Workspace:Raycast(origin, direction, params)
-    
-    -- If raycastResult is nil, nothing blocked the line of sight
     return raycastResult == nil
 end
 
@@ -97,14 +94,11 @@ local function getClosestPlayerToCrosshair()
                         
                         -- Process raycast geometry intercept checks if WallCheck option is turned on
                         if Aimbot.WallCheck and not isVisible(camera, targetPart, character) then
-                            continue -- Skip this player entirely, they're behind a wall
+                            continue 
                         end
 
                         shortestDistance = distanceToCenter
-                        closestPlayer = {
-                            Part = targetPart,
-                            ScreenPos = Vector2.new(screenPos.X, screenPos.Y)
-                        }
+                        closestPlayer = targetPart
                     end
                 end
             end
@@ -125,25 +119,27 @@ local function processAimbotPipeline()
         FOVCircle.Visible = Aimbot.Enabled
     end
 
-    -- Run target locking only if enabled in menu AND holding LMB
-    if Aimbot.Enabled and isLMBPressed then
-        local target = getClosestPlayerToCrosshair()
-        if target then
+    -- Run target locking only if enabled in menu AND holding RMB
+    if Aimbot.Enabled and isRMBPressed then
+        local targetPart = getClosestPlayerToCrosshair()
+        if targetPart then
             local currentCFrame = camera.CFrame
             
+            -- Isolates the lookAt orientation vectors based directly on current frame context locations
+            local lookAtCFrame = CFrame.lookAt(currentCFrame.Position, targetPart.Position)
+            
             if Aimbot.Smoothness == 1 then
-                -- Frame-Perfect Hard Snap
-                camera.CFrame = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
+                -- Frame-Perfect Hard Snap: Direct CFrame transition that preserves AR2 third person anchors
+                camera.CFrame = lookAtCFrame
             else
-                -- Smooth Humanized Lerp Tracking
-                local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
-                camera.CFrame = currentCFrame:Lerp(targetRotation, 1 / Aimbot.Smoothness)
+                -- Humanized Smooth Vector Tracking
+                camera.CFrame = currentCFrame:Lerp(lookAtCFrame, 1 / Aimbot.Smoothness)
             end
         end
     end
 end
 
--- Instantiate loop
+-- Instantiate loop safely aligned with engine camera updates
 RunService:BindToRenderStep("AimbotTargetingPipeline", Enum.RenderPriority.Camera.Value + 1, processAimbotPipeline)
 
 _G.Aimbot = Aimbot
