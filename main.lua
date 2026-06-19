@@ -186,7 +186,7 @@ local function hideEntry(d)
 end
 
 -- =============================================================================
--- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION (RMB ACTIVATED)
+-- SYSTEM AIMBOT INTERCEPT TARGET CONFIGURATION (MOUSE TRANSITION CONFIGURED)
 -- =============================================================================
 local Aimbot = {
     Enabled = false,
@@ -207,7 +207,7 @@ FOVCircle.Visible = false
 local isRMBPressed = false
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end -- Safe processing barrier inside menu elements
+    if gameProcessed then return end 
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         isRMBPressed = true
     end
@@ -287,17 +287,17 @@ local function renderFrame()
         FOVCircle.Visible = Aimbot.Enabled
     end
 
-    -- Swapped tracker conditional state hook to rely strictly on isRMBPressed
     if Aimbot.Enabled and isRMBPressed then
         local target = getClosestPlayerToCrosshair()
         if target then
-            local currentCFrame = camera.CFrame
-            if Aimbot.Smoothness == 1 then
-                camera.CFrame = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
-            else
-                local targetRotation = CFrame.lookAt(currentCFrame.Position, target.Part.Position)
-                camera.CFrame = currentCFrame:Lerp(targetRotation, 1 / Aimbot.Smoothness)
-            end
+            local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+            
+            -- HARDWARE SYNTAX TRANSITION: Intercepts delta frames via relative screen pixels
+            local deltaX = (target.ScreenPos.X - centerScreen.X) / Aimbot.Smoothness
+            local deltaY = (target.ScreenPos.Y - centerScreen.Y) / Aimbot.Smoothness
+            
+            -- native relative hardware movement injection bypasses AR2 shoulder-cam overrides perfectly
+            mousemoverel(deltaX, deltaY)
         end
     end
 
@@ -714,18 +714,21 @@ Tab2:CreateButton({
     end,
 })
 
--- ── TAB 3: AUTOMATED TARGETING INTERFACE (CRASH PROTECTED)
+-- ── TAB 3: AUTOMATED TARGETING INTERFACE (TEXT BOX TRANSITION COMPLETE)
 local Tab3 = Window:CreateTab("⚙️ Aimbot System", nil)
 Tab3:CreateToggle({ Name = "Enable Aimbot Lock", CurrentValue = false, Callback = function(v) Aimbot.Enabled = v end })
 Tab3:CreateToggle({ Name = "Wall Check (Visible Only)", CurrentValue = true, Callback = function(v) Aimbot.WallCheck = v end })
-Tab3:CreateSlider({
-    Name = "Aimbot FOV Radius", Min = 30, Max = 400, CurrentValue = 120, Increment = 1, ValueName = "Pixels", Flag = "AimFOV",
-    Callback = function(v) Aimbot.FOV = v end,
+
+Tab3:CreateInput({
+    Name = "Aimbot FOV Radius", PlaceholderText = "120", RemoveTextAfterFocusLost = false,
+    Callback = function(t) local n = tonumber(t); if n then Aimbot.FOV = n end end,
 })
-Tab3:CreateSlider({
-    Name = "Tracking Smoothness", Min = 1, Max = 10, CurrentValue = 1, Increment = 1, ValueName = "Smooth", Flag = "AimSmooth",
-    Callback = function(v) Aimbot.Smoothness = v end,
+
+Tab3:CreateInput({
+    Name = "Tracking Smoothness", PlaceholderText = "1", RemoveTextAfterFocusLost = false,
+    Callback = function(t) local n = tonumber(t); if n then Aimbot.Smoothness = math.max(1, n) end end,
 })
+
 Tab3:CreateDropdown({
     Name = "Target Bone Alignment", Options = {"Head", "HumanoidRootPart", "UpperTorso"}, CurrentValue = {"Head"},
     Callback = function(v) 
