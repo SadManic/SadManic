@@ -1,5 +1,5 @@
 -- =============================================================================
--- MATRIX CORE AUTOMATED TARGETING & FOV ENGINE (INPUT EMULATION FIXED)
+-- AUTOMATED TARGETING ENGINE - HIGH PRIOR_TIY PREDICTION REWRITE
 -- =============================================================================
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -9,13 +9,13 @@ local LocalPlayer = Players.LocalPlayer
 
 local Aimbot = {
     Enabled = false,
-    WallCheck = true,      -- Filter targets behind solid walls/cover
-    TargetPart = "Head",   -- Options: "Head", "HumanoidRootPart", "UpperTorso"
-    FOV = 120,             -- Radius in pixels
-    Smoothness = 2,        -- 1 = Instant snap, higher values = smoother tracking (Keep >= 1)
+    WallCheck = true,
+    TargetPart = "Head",
+    FOV = 120,
+    Smoothness = 1, -- 1 is now a true frame-perfect snap
+    PredictionFactor = 0.135 -- Adjust this slightly if it overshoots/undershoots running targets
 }
 
--- Create interactive drawing asset
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Color = Color3.fromRGB(255, 255, 255)
 FOVCircle.Thickness = 1
@@ -26,7 +26,6 @@ FOVCircle.Visible = false
 
 local isRMBPressed = false
 
--- Hardware input listeners mapped to Right Click (Aim Down Sights)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end 
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
@@ -40,7 +39,6 @@ UserInputService.InputEnded:Connect(function(input)
     end
 end)
 
--- Grabs the player model hook directly from your global folder configuration
 local function getTargetCharacterModel(player)
     local charsFolder = _G.CharactersFolder
     if charsFolder then
@@ -50,34 +48,28 @@ local function getTargetCharacterModel(player)
     return player.Character
 end
 
--- Checks if a clear line of sight exists between your camera and the target's bone
 local function isVisible(camera, targetPart, targetCharacter)
     local myCharacter = getTargetCharacterModel(LocalPlayer)
     if not myCharacter then return false end
-
-    local origin = camera.CFrame.Position
-    local destination = targetPart.Position
-    local direction = destination - origin
 
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = { myCharacter, targetCharacter, camera, Players }
     params.IgnoreWater = true
 
-    local raycastResult = Workspace:Raycast(origin, direction, params)
+    local raycastResult = Workspace:Raycast(camera.CFrame.Position, targetPart.Position - camera.CFrame.Position, params)
     return raycastResult == nil
 end
 
--- Scan method utilizing your existing ActiveESP layout table to eliminate overhead
 local function getClosestPlayerToCrosshair()
     local camera = Workspace.CurrentCamera
-    if not camera then return nil end
+    if not camera then return nil, nil end
 
     local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-    local closestPlayer = nil
+    local closestPart = nil
+    local closestChar = nil
     local shortestDistance = Aimbot.FOV
 
-    -- Loops through your shared global ESP tracking table
     local activeTable = _G.ActiveESP or {} 
     for player, _ in pairs(activeTable) do
         local character = getTargetCharacterModel(player)
@@ -92,61 +84,62 @@ local function getClosestPlayerToCrosshair()
                     local distanceToCenter = (Vector2.new(screenPos.X, screenPos.Y) - centerScreen).Magnitude
                     if distanceToCenter < shortestDistance then
                         
-                        -- Process raycast geometry intercept checks if WallCheck option is turned on
                         if Aimbot.WallCheck and not isVisible(camera, targetPart, character) then
                             continue 
                         end
 
                         shortestDistance = distanceToCenter
-                        closestPlayer = targetPart
+                        closestPart = targetPart
+                        closestChar = character
                     end
                 end
             end
         end
     end
-    return closestPlayer
+    return closestPart, closestChar
 end
 
--- Main calculation intercept pipeline
 local function processAimbotPipeline()
     local camera = Workspace.CurrentCamera
     if not camera then return end
     
-    -- Keep visual FOV circle centered and size-matched
     if FOVCircle then
         FOVCircle.Radius = Aimbot.FOV
         FOVCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
         FOVCircle.Visible = Aimbot.Enabled
     end
 
-    -- Run target locking only if enabled in menu AND holding RMB
     if Aimbot.Enabled and isRMBPressed then
-        local targetPart = getClosestPlayerToCrosshair()
-        if targetPart then
-            local screenPos, onScreen = camera:WorldToViewportPoint(targetPart.Position)
+        local targetPart, targetChar = getClosestPlayerToCrosshair()
+        if targetPart and targetChar then
+            
+            -- Get target's movement speed/velocity
+            local rootPart = targetChar:FindFirstChild("HumanoidRootPart")
+            local velocity = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
+            
+            -- Predict future position based on travel speed
+            local predictedPosition = targetPart.Position + (velocity * Aimbot.PredictionFactor)
+            
+            local screenPos, onScreen = camera:WorldToViewportPoint(predictedPosition)
             if onScreen then
                 local centerScreen = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
                 
-                -- Calculate screen space distance relative to your crosshair
                 local deltaX = screenPos.X - centerScreen.X
                 local deltaY = screenPos.Y - centerScreen.Y
                 
-                -- Dynamic smoothing adjustment factor
                 local smoothFactor = math.max(1, Aimbot.Smoothness)
                 
-                -- Move the hardware cursor natively via executor context environment
                 if mousemoverel then
+                    -- If smoothness is 1, it passes raw delta for instantaneous snap
                     mousemoverel(deltaX / smoothFactor, deltaY / smoothFactor)
-                else
-                    warn("[Aimbot] Missing 'mousemoverel' execution closure required for input emulation.")
                 end
             end
         end
     end
 end
 
--- Instantiate loop safely aligned with engine camera updates
-RunService:BindToRenderStep("AimbotTargetingPipeline", Enum.RenderPriority.Camera.Value + 1, processAimbotPipeline)
+-- Bound to Render priority to execute right before frame layout compilation
+RunService:BindToRenderStep("AimbotPredictivePipeline", Enum.RenderPriority.Last.Value, processAimbotPipeline)
 
 _G.Aimbot = Aimbot
 return Aimbot
